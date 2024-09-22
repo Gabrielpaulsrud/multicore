@@ -5,17 +5,13 @@ import java.util.LinkedList;
 
 import java.io.*;
 
-
-class Graph {
-
-	int	s;
-	int	t;
-	int	n;
-	int	m;
-	Node	excess;		// list of nodes with excess preflow
-	Node	node[];
-	Edge	edge[];
-	boolean print = false;
+class Work extends Thread {
+	Node excess;
+	Node s;
+	Node t;
+	Boolean print = false;
+	ListIterator<Edge>	iter;
+	int b; //Direction
 
 	void pr(Object... args) {
 		if (print) {
@@ -26,41 +22,51 @@ class Graph {
 		}
 	}
 	
+	Node v;
+	Edge a;
+	public void run(){
+		while (excess != null) {
+			pr("while excess yay");
+			Node u = excess;
+			v = null;
+			a = null;
+			excess = u.next;
+			pr("U with height: " + u.h + " And excess: " + u.e);
 
-	Graph(Node node[], Edge edge[])
-	{
-		this.node	= node;
-		this.n		= node.length;
-		this.edge	= edge;
-		this.m		= edge.length;
+			iter = u.adj.listIterator();
+			while (iter.hasNext()) {
+				a = iter.next();
+				if (u == a.u){ //If selected node is u, set direction to positive
+					v = a.v;
+					b = 1;
+				}
+				else{ // Else, set direction as negative
+					v = a.u;
+					b = -1;
+				}
+				if (u.h > v.h && b * a.f < a.c){
+					pr("BREAK");
+					break;
+				}
+				else{
+					pr("v is null");
+					v = null;
+				}
+			}
+
+			if (v != null){
+				push(u, v, a);
+			}
+			else{
+				relabel(u);
+				enter_excess(u);
+			}
+		}
 	}
-
-	void print_graph(){
-		// Step 1: Print all nodes with their excess and height
-		pr("Nodes:");
-		for (Node node : this.node) {  // Assuming 'nodes' is a list or array of Node objects
-			pr("Node " + node.i + " -> Excess: " + node.e + ", Height: " + node.h);
-		}
-	
-		// Step 2: Print all edges with their flow and capacity
-		pr("\nEdges:");
-		for (Edge edge : this.edge) {  // Assuming 'edges' is a list or array of Edge objects
-			pr("Edge from Node " + edge.u.i + " to Node " + edge.v.i +
-							   " -> Flow: " + edge.f + " / Capacity: " + edge.c);
-		}
-	
-		// Step 3: Print all nodes in the excess list
-		pr("\nExcess list:");
-		Node tmp = excess;  // Assuming 'excess' is the head of the excess linked list
-		while (tmp != null) {
-			pr("Node " + tmp.i);
-			tmp = tmp.next;
-		}
-   }
 
 	void enter_excess(Node u)
 	{
-		if (u != node[s] && u != node[t]) {
+		if (u != s && u != t) {
 			if (excess != null){
 				if (u==excess){
 					assert false;
@@ -121,8 +127,63 @@ class Graph {
 			enter_excess(v);
 		}
 	}
+}
 
-	int preflow(int s, int t)
+class Graph {
+
+	int	s;
+	int	t;
+	int	n;
+	int	m;
+	Node	excess;		// list of nodes with excess preflow
+	Node	node[];
+	Edge	edge[];
+	boolean print = false;
+
+	void pr(Object... args) {
+		if (print) {
+			for (Object arg : args) {
+				System.out.print(arg + " ");
+			}
+			System.out.println();  // Print a newline after all arguments are printed
+		}
+	}
+	
+
+	Graph(Node node[], Edge edge[])
+	{
+		this.node	= node;
+		this.n		= node.length;
+		this.edge	= edge;
+		this.m		= edge.length;
+	}
+
+	void print_graph(){
+		// Step 1: Print all nodes with their excess and height
+		pr("Nodes:");
+		for (Node node : this.node) {  // Assuming 'nodes' is a list or array of Node objects
+			pr("Node " + node.i + " -> Excess: " + node.e + ", Height: " + node.h);
+		}
+	
+		// Step 2: Print all edges with their flow and capacity
+		pr("\nEdges:");
+		for (Edge edge : this.edge) {  // Assuming 'edges' is a list or array of Edge objects
+			pr("Edge from Node " + edge.u.i + " to Node " + edge.v.i +
+							   " -> Flow: " + edge.f + " / Capacity: " + edge.c);
+		}
+	
+		// Step 3: Print all nodes in the excess list
+		pr("\nExcess list:");
+		Node tmp = excess;  // Assuming 'excess' is the head of the excess linked list
+		while (tmp != null) {
+			pr("Node " + tmp.i);
+			tmp = tmp.next;
+		}
+   }
+
+
+
+	int preflow(int s, int t, int n_threads)
 	{
 		ListIterator<Edge>	iter;
 		int			b;
@@ -143,44 +204,11 @@ class Graph {
 			push(node[s], other(a, node[s]), a);
 		}
 		print_graph();
+		
+		for 
+		// spawn threasd + wait ofr threads
 
-		while (excess != null) {
-			pr("while excess yay");
-			u = excess;
-			v = null;
-			a = null;
-			excess = u.next;
-			pr("U with height: " + u.h + " And excess: " + u.e);
-
-			iter = u.adj.listIterator();
-			while (iter.hasNext()) {
-				a = iter.next();
-				if (u == a.u){ //If selected node is u, set direction to positive
-					v = a.v;
-					b = 1;
-				}
-				else{ // Else, set direction as negative
-					v = a.u;
-					b = -1;
-				}
-				if (u.h > v.h && b * a.f < a.c){
-					pr("BREAK");
-					break;
-				}
-				else{
-					pr("v is null");
-					v = null;
-				}
-			}
-
-			if (v != null){
-				push(u, v, a);
-			}
-			else{
-				relabel(u);
-				enter_excess(u);
-			}
-		}
+		
 
 		return node[t].e;
 	}
@@ -249,7 +277,7 @@ class Preflow {
 		}
 
 		g = new Graph(node, edge);
-		f = g.preflow(0, n-1);
+		f = g.preflow(0, n-1, 1);
 		double	end = System.currentTimeMillis();
 		System.out.println("t = " + (end - begin) / 1000.0 + " s");
 		System.out.println("f = " + f);
