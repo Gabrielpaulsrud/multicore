@@ -1,0 +1,71 @@
+Questions for lab.
+
+My idea doesn’t seem to work…. It’s too slow. Thought and ideas?
+
+Current:
+While(n_live_threads or excess_list)
+    find_what_to_push
+	pthread(push)
+
+Super slow unfortunately. While loop repeats even if it has nothing to but wait for a thread to finish execution.
+
+Idea. Make n_live_threads a condition variable
+
+While(n_live_threads or excess_list)
+	While(excess_list)
+        find_what_to_push
+        pthread(push)
+    wait_for_signal on n_live_threads (This can have changed result of either n_live_threads or excess_list)
+
+push()
+    n_live_threads.signal()
+
+
+More elaborate suggestion.
+
+pthread_mutex_t mutexLiveThreads
+pthread_cond_t condLiveThreads
+int n_live_threads
+pthread_mutex_init(&mutexLiveThreads, NULL)
+pthread_cond_init(&condLiveThreads, NULL)
+
+pthread_mutex_lock(&mutexLiveThreads)
+While(n_live_threads or excess_list)
+    pthread_mutex_unlock(&mutexLiveThreads)
+	While(excess_list)
+        find_what_to_push
+        pthread(push)
+    wait_for_signal on n_live_threads //But if push sends the signal before this point I won't receive it and wait indefinetly??
+
+push()
+    do_the_pushing
+    pthread_mutex_unlock(&mutexLiveThreads)
+    n_live_threads--
+    pthread_mutex_lock(&mutexLiveThreads)
+    n_live_threads.signal()
+
+One further step??
+
+pthread_mutex_lock(&mutexLiveThreads)
+While(n_live_threads or excess_list)
+    pthread_mutex_unlock(&mutexLiveThreads)
+	While(excess_list)
+        find_what_to_push
+        pthread(push)
+    pthread_mutex_lock(&mutexLiveThreads)
+    if not(n_live_threads or excess_list)
+        wait_for_signal on n_live_threads //But if push sends the signal before this point I won't receive it and wait indefinetly??
+    pthread_mutex_unlock(&mutexLiveThreads)
+
+Is it better to use a while?
+
+pthread_mutex_lock(&mutexLiveThreads)
+While(n_live_threads or excess_list)
+    pthread_mutex_unlock(&mutexLiveThreads)
+	While(excess_list)
+        find_what_to_push
+        pthread(push)
+    pthread_mutex_lock(&mutexLiveThreads)
+    while(n_live_threads or excess_list)
+        wait_for_signal on n_live_threads //But if push sends the signal before this point I won't receive it and wait indefinetly??
+    pthread_mutex_unlock(&mutexLiveThreads)

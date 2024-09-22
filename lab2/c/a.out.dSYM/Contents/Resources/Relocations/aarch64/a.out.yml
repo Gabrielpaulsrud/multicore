@@ -1,0 +1,23 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     a.out
+relocations:
+  - { offsetInCU: 0x26, offset: 0x26, size: 0x8, addend: 0x0, symName: _error, symObjAddr: 0x0, symBinAddr: 0x100002650, symSize: 0x7C }
+  - { offsetInCU: 0x59, offset: 0x59, size: 0x8, addend: 0x0, symName: _progname, symObjAddr: 0x7F08, symBinAddr: 0x100008000, symSize: 0x0 }
+  - { offsetInCU: 0x2CD, offset: 0x2CD, size: 0x8, addend: 0x0, symName: _error, symObjAddr: 0x0, symBinAddr: 0x100002650, symSize: 0x7C }
+  - { offsetInCU: 0x30F, offset: 0x30F, size: 0x8, addend: 0x0, symName: _wait_all_locks, symObjAddr: 0x7C, symBinAddr: 0x1000026CC, symSize: 0x9C }
+  - { offsetInCU: 0x3DA, offset: 0x3DA, size: 0x8, addend: 0x0, symName: _add_alive_threads, symObjAddr: 0x118, symBinAddr: 0x100002768, symSize: 0x5C }
+  - { offsetInCU: 0x440, offset: 0x440, size: 0x8, addend: 0x0, symName: _sub_alive_threads, symObjAddr: 0x174, symBinAddr: 0x1000027C4, symSize: 0x5C }
+  - { offsetInCU: 0x48F, offset: 0x48F, size: 0x8, addend: 0x0, symName: _get_alive_threads, symObjAddr: 0x1D0, symBinAddr: 0x100002820, symSize: 0x38 }
+  - { offsetInCU: 0x526, offset: 0x526, size: 0x8, addend: 0x0, symName: _print_graph, symObjAddr: 0x208, symBinAddr: 0x100002858, symSize: 0x138 }
+  - { offsetInCU: 0x71B, offset: 0x71B, size: 0x8, addend: 0x0, symName: _preflow, symObjAddr: 0x340, symBinAddr: 0x100002990, symSize: 0x834 }
+  - { offsetInCU: 0x110A, offset: 0x110A, size: 0x8, addend: 0x0, symName: _preflow.cold.1, symObjAddr: 0x1348, symBinAddr: 0x100003998, symSize: 0x2C }
+  - { offsetInCU: 0x1121, offset: 0x1121, size: 0x8, addend: 0x0, symName: _preflow.cold.2, symObjAddr: 0x1374, symBinAddr: 0x1000039C4, symSize: 0x2C }
+  - { offsetInCU: 0x11AC, offset: 0x11AC, size: 0x8, addend: 0x0, symName: _push, symObjAddr: 0xB74, symBinAddr: 0x1000031C4, symSize: 0x370 }
+  - { offsetInCU: 0x14B5, offset: 0x14B5, size: 0x8, addend: 0x0, symName: _main, symObjAddr: 0xEE4, symBinAddr: 0x100003534, symSize: 0x464 }
+  - { offsetInCU: 0x14D1, offset: 0x14D1, size: 0x8, addend: 0x0, symName: _push.cold.1, symObjAddr: 0x13A0, symBinAddr: 0x1000039F0, symSize: 0x28 }
+  - { offsetInCU: 0x14E8, offset: 0x14E8, size: 0x8, addend: 0x0, symName: _push.cold.2, symObjAddr: 0x13C8, symBinAddr: 0x100003A18, symSize: 0x28 }
+  - { offsetInCU: 0x14FF, offset: 0x14FF, size: 0x8, addend: 0x0, symName: _push.cold.3, symObjAddr: 0x13F0, symBinAddr: 0x100003A40, symSize: 0x28 }
+  - { offsetInCU: 0x18B5, offset: 0x18B5, size: 0x8, addend: 0x0, symName: _main, symObjAddr: 0xEE4, symBinAddr: 0x100003534, symSize: 0x464 }
+  - { offsetInCU: 0x1E3D, offset: 0x1E3D, size: 0x8, addend: 0x0, symName: _preflow.cold.1, symObjAddr: 0x1348, symBinAddr: 0x100003998, symSize: 0x2C }
+...

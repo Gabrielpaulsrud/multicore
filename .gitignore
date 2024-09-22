@@ -1,0 +1,59 @@
+# Ignore the specific file lab1-newhope/all-output
+lab1-newhope/all-output
+.class
+.DS_Store
+
+# Ignore typical Scala and Java build directories
+target/
+out/
+sbt-dist/
+project/target/
+project/project/
+
+# Ignore compiled Java and Scala class files
+*.class
+*.jar
+*.war
+*.ear
+*.sbt
+
+# Ignore C/C++ build files and directories
+*.o
+*.obj
+*.exe
+*.out
+*.a
+*.so
+*.dll
+*.dSYM/
+build/
+bin/
+*.gcda
+*.gcno
+
+# Ignore IntelliJ IDEA files
+.idea/
+*.iml
+*.iws
+
+# Ignore Maven, SBT, and Gradle directories
+.mvn/
+.gradle/
+.cache/
+target/
+bin/
+
+# Ignore VS Code settings
+.vscode/
+
+# Ignore other system-specific files
+.DS_Store
+Thumbs.db
+
+# Ignore other potential build outputs
+*.log
+
+lab1-newhope/.bloop/
+lab1-newhope/.bloop/**
+
+lab1-newhope/*
