@@ -129,6 +129,19 @@ class Work extends Thread {
 	}
 }
 
+class StartWork extends Work {
+	public void run(){
+		iter = s.adj.listIterator();
+		while (iter.hasNext()) {
+			a = iter.next();
+
+			node[s].e += a.c;
+
+			push(node[s], other(a, node[s]), a);
+		}
+	}
+}
+
 class Graph {
 
 	int	s;
