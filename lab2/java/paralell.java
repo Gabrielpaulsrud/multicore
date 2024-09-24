@@ -2,18 +2,13 @@ import java.util.Scanner;
 import java.util.Iterator;
 import java.util.ListIterator;
 import java.util.LinkedList;
-
+import java.util.List;
 import java.io.*;
 
-class Work extends Thread {
-	Node excess;
-	Node s;
-	Node t;
-	Boolean print = false;
-	ListIterator<Edge>	iter;
-	int b; //Direction
+class Print {
+    static boolean print = true;
 
-	void pr(Object... args) {
+	static void mby(Object... args) {
 		if (print) {
 			for (Object arg : args) {
 				System.out.print(arg + " ");
@@ -21,17 +16,23 @@ class Work extends Thread {
 			System.out.println();  // Print a newline after all arguments are printed
 		}
 	}
+}
+
+class PushThread extends BasePushThread {
 	
-	Node v;
-	Edge a;
-	public void run(){
+	public PushThread(Node s, Node t){
+		this.s = s;
+		this.t = t;
+	}
+
+	@Override
+	public void run() {
 		while (excess != null) {
-			pr("while excess yay");
-			Node u = excess;
+			Print.mby("while excess yay");
 			v = null;
 			a = null;
-			excess = u.next;
-			pr("U with height: " + u.h + " And excess: " + u.e);
+			Node u = leave_excess();
+			Print.mby("U with height: " + u.height() + " And excess: " + u.excess());
 
 			iter = u.adj.listIterator();
 			while (iter.hasNext()) {
@@ -44,12 +45,12 @@ class Work extends Thread {
 					v = a.u;
 					b = -1;
 				}
-				if (u.h > v.h && b * a.f < a.c){
-					pr("BREAK");
+				if (u.height() > v.height() && b * a.flow() < a.c){
+					Print.mby("BREAK");
 					break;
 				}
 				else{
-					pr("v is null");
+					Print.mby("v is null");
 					v = null;
 				}
 			}
@@ -58,10 +59,46 @@ class Work extends Thread {
 				push(u, v, a);
 			}
 			else{
-				relabel(u);
+				u.relabel();
 				enter_excess(u);
 			}
 		}
+	}
+	
+}
+
+class InitialPushThread extends BasePushThread {
+
+	public InitialPushThread(Node s, Node t){
+		this.s = s;
+		this.t = t;
+	}
+
+	@Override
+	public void run(){
+		iter = s.adj.listIterator();
+		Print.mby("Tjo");
+		while (iter.hasNext()) {
+			a = iter.next();
+			s.e += a.c;
+			push(s, other(a, s), a);
+		}
+	}
+}
+
+class BasePushThread extends Thread {
+	static Node excess; //mby should be static?
+	Node s;
+	Node t;
+	Boolean print = true;
+	ListIterator<Edge>	iter;
+	int b; //Direction
+
+	
+	Node v;
+	Edge a;
+	public void run(){
+		assert false; //This class is not intended to be ran itself.
 	}
 
 	void enter_excess(Node u)
@@ -72,10 +109,32 @@ class Work extends Thread {
 					assert false;
 				}
 			}
-			pr(u.i + " Just enetered excess...");
-			u.next = excess;
-			excess = u;
+			synchronized (BasePushThread.class){
+				Print.mby(u.i + " Just enetered excess...");
+				u.next = excess;
+				excess = u;
+				BasePushThread.class.notify();
+			}
 		}
+	}
+
+	Node leave_excess()
+	{
+		Node leaver;
+		synchronized (BasePushThread.class){
+			leaver = excess;
+			while (excess == null) {
+				try {
+					BasePushThread.class.wait();
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+					assert false;
+				}
+			}
+			Print.mby("Successfully left");
+			excess = leaver.next;
+		}
+		return leaver;
 	}
 
 	Node other(Edge a, Node u)
@@ -86,61 +145,49 @@ class Work extends Thread {
 			return a.u;
 	}
 
-	void relabel(Node u)
-	{
-		pr("Relable: "+ u.i + " To: " + (u.h+1));
-		u.h++;
-	}
+	// void relabel(Node u)
+	// {
+	// 	Print.mby("Relable: "+ u.i + " To: " + (u.h+1));
+	// 	u.h++;
+	// }
 
 	void push(Node u, Node v, Edge a)
 	{
 		int	d;	/* remaining capacity of the edge. */
 
 
-		pr("U with height: " + u.h + " And excess: " + u.e);
-		pr("V with height: " + v.h + " And excess: " + v.e);
+		Print.mby("U with height: " + u.h + " And excess: " + u.e);
+		Print.mby("V with height: " + v.h + " And excess: " + v.e);
 		if (u == a.u) {
 			// Min of u.excess and (edge capacity - edge flow)
-			d = Math.min(u.e, a.c - a.f);
+			d = Math.min(u.excess(), a.c - a.flow());
 			a.f += d;
 		} else {
 			// Min of u.excess and (edge capacity + edge flow)
 			// Since flow is in other direction
-			d = Math.min(u.e, a.c + a.f);
-			a.f -= d;
+			d = Math.min(u.excess(), a.c + a.flow());
+			a.changeFlow(-d);
 		}
 
-		pr("Pushed: "+ d + " From: " + u.i + " To: " + v.i);
+		Print.mby("Pushed: "+ d + " From: " + u.i + " To: " + v.i);
 		
 
-		u.e -= d;
-		v.e += d;
+		u.changeExcess(-d);
+		v.changeExcess(d);
 		assert d > 0 ;
 		assert u.e >= 0 ;
 		assert Math.abs(a.f) <= a.c;
 
 
-		if(u.e > 0){
+		if(u.excess() > 0){
 			enter_excess(u);
 		}
-		if(v.e == d){
+		if(v.excess() == d){
 			enter_excess(v);
 		}
 	}
 }
 
-class StartWork extends Work {
-	public void run(){
-		iter = s.adj.listIterator();
-		while (iter.hasNext()) {
-			a = iter.next();
-
-			node[s].e += a.c;
-
-			push(node[s], other(a, node[s]), a);
-		}
-	}
-}
 
 class Graph {
 
@@ -151,16 +198,8 @@ class Graph {
 	Node	excess;		// list of nodes with excess preflow
 	Node	node[];
 	Edge	edge[];
-	boolean print = false;
+	boolean print = true;
 
-	void pr(Object... args) {
-		if (print) {
-			for (Object arg : args) {
-				System.out.print(arg + " ");
-			}
-			System.out.println();  // Print a newline after all arguments are printed
-		}
-	}
 	
 
 	Graph(Node node[], Edge edge[])
@@ -173,23 +212,23 @@ class Graph {
 
 	void print_graph(){
 		// Step 1: Print all nodes with their excess and height
-		pr("Nodes:");
+		Print.mby("Nodes:");
 		for (Node node : this.node) {  // Assuming 'nodes' is a list or array of Node objects
-			pr("Node " + node.i + " -> Excess: " + node.e + ", Height: " + node.h);
+			Print.mby("Node " + node.i + " -> Excess: " + node.e + ", Height: " + node.h);
 		}
 	
 		// Step 2: Print all edges with their flow and capacity
-		pr("\nEdges:");
+		Print.mby("\nEdges:");
 		for (Edge edge : this.edge) {  // Assuming 'edges' is a list or array of Edge objects
-			pr("Edge from Node " + edge.u.i + " to Node " + edge.v.i +
+			Print.mby("Edge from Node " + edge.u.i + " to Node " + edge.v.i +
 							   " -> Flow: " + edge.f + " / Capacity: " + edge.c);
 		}
 	
 		// Step 3: Print all nodes in the excess list
-		pr("\nExcess list:");
+		Print.mby("\nExcess list:");
 		Node tmp = excess;  // Assuming 'excess' is the head of the excess linked list
 		while (tmp != null) {
-			pr("Node " + tmp.i);
+			Print.mby("Node " + tmp.i);
 			tmp = tmp.next;
 		}
    }
@@ -207,21 +246,35 @@ class Graph {
 		this.s = s;
 		this.t = t;
 		node[s].h = n;
-
-		iter = node[s].adj.listIterator();
-		while (iter.hasNext()) {
-			a = iter.next();
-
-			node[s].e += a.c;
-
-			push(node[s], other(a, node[s]), a);
+		Node excess = null;
+		BasePushThread.excess = excess;
+		InitialPushThread init = new InitialPushThread(node[s], node[t]);
+		init.start();
+		try {
+			init.join();
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+			assert false;
 		}
 		print_graph();
-		
-		for 
-		// spawn threasd + wait ofr threads
+		 
+		PushThread[] pushThreads = new PushThread[n_threads];
+        for (int i = 0; i < n_threads; ++i){
+			pushThreads[i] = new PushThread(node[s], node[t]);
+		}
+		for (int i = 0; i < n_threads; ++i){
+			pushThreads[i].start();
+		}
+		for (int i = 0; i < n_threads; ++i){
+			try {
+				pushThreads[i].join();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+				assert false;
+			}
+		}
 
-		
+		// spawn threasd + wait ofr threads
 
 		return node[t].e;
 	}
@@ -239,6 +292,31 @@ class Node {
 		this.i = i;
 		adj = new LinkedList<Edge>();
 	}
+
+	synchronized void relabel()
+	{
+		Print.mby("Relable: "+ i + " To: " + (h+1));
+		h++;
+	}
+
+	synchronized int height()
+	{
+		Print.mby("Relable: "+ i + " To: " + (h+1));
+		return h;
+	}
+
+	synchronized void changeExcess(int increase)
+	{
+		Print.mby("Set: "+ i + " excess to: " + (e+increase));
+		e = e + increase;
+	}
+
+	synchronized int excess()
+	{
+		Print.mby("Read: "+ i + " excess as: " + e);
+		return e;
+	}
+
 }
 
 class Edge {
@@ -253,6 +331,18 @@ class Edge {
 		this.v = v;
 		this.c = c;
 
+	}
+
+	synchronized void changeFlow(int increase)
+	{
+		Print.mby("Set: " + u.i + " -> " + v.i + " flow to: " + (f+increase));
+		f = f + increase;
+	}
+
+	synchronized int flow()
+	{
+		Print.mby("Read: " + u.i + " -> " + v.i + " flow as: " + f);
+		return f;
 	}
 }
 
@@ -290,7 +380,7 @@ class Preflow {
 		}
 
 		g = new Graph(node, edge);
-		f = g.preflow(0, n-1, 1);
+		f = g.preflow(0, n-1, 2);
 		double	end = System.currentTimeMillis();
 		System.out.println("t = " + (end - begin) / 1000.0 + " s");
 		System.out.println("f = " + f);
