@@ -1,45 +1,29 @@
-/* This is an implementation of the preflow-push algorithm, by
- * Goldberg and Tarjan, for the 2021 EDAN26 Multicore programming labs.
+/* This is essentially the same as preflow.c in this directory, lab0.
  *
- * It is intended to be as simple as possible to understand and is
- * not optimized in any way.
+ * if you compile it with: 
+ *	gcc -DMAIN forsete.c 
+ * then it is the same as preflow.c
+ * and without -DMAIN, it can be used to submit at forsete.cs.lth.se
  *
- * You should NOT read everything for this course.
+ * The -DMAIN defines a macro which is then tested in this file with 
  *
- * Focus on what is most similar to the pseudo code, i.e., the functions
- * preflow, push, and relabel.
- *
- * Some things about C are explained which are useful for everyone  
- * for lab 3, and things you most likely want to skip have a warning 
- * saying it is only for the curious or really curious. 
- * That can safely be ignored since it is not part of this course.
- *
- * Compile and run with: make
- *
- * Enable prints by changing from 1 to 0 at PRINT below.
- *
- * Feel free to ask any questions about it on Discord 
- * at #lab0-preflow-push
- *
- * A variable or function declared with static is only visible from
- * within its file so it is a good practice to use in order to avoid
- * conflicts for names which need not be visible from other files.
- *
+ * #ifdef MAIN
+ *      do things as in preflow.c (read a text file in new_graph) 
+ *      and with a main function.
+ * #else
+ *      use a new_graph function with parameter from forsete's main.
+ * #endif
  */
- 
+
 #include <assert.h>
 #include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
-//#include <unistd.h> //Why this lib?
-#include <time.h> // Include this for time-related functions
 
-
-
-#define PRINT 0			/* enable/disable prints. */
+#define PRINT		0	/* enable/disable prints.	*/
+#define TIME		0	/* for timing on power.		*/
 
 /* the funny do-while next clearly performs one iteration of the loop.
  * if you are really curious about why there is a loop, please check
@@ -70,14 +54,13 @@ typedef struct graph_t	graph_t;
 typedef struct node_t	node_t;
 typedef struct edge_t	edge_t;
 typedef struct list_t	list_t;
-typedef struct thread_data_t	thread_data_t;
 
+typedef struct xedge_t	xedge_t;
 
-
-
-struct thread_data_t {
-    graph_t *g;
-    int i;
+struct xedge_t {
+	int		u;	/* one of the two nodes.	*/
+	int		v;	/* the other. 			*/
+	int		c;	/* capacity.			*/
 };
 
 struct list_t {
@@ -90,7 +73,6 @@ struct node_t {
 	int		e;	/* excess flow.			*/
 	list_t*		edge;	/* adjacency list.		*/
 	node_t*		next;	/* with excess preflow.		*/
-	pthread_mutex_t lock;    /* Mutex to protect e. */
 };
 
 struct edge_t {
@@ -98,7 +80,6 @@ struct edge_t {
 	node_t*		v;	/* the other. 			*/
 	int		f;	/* flow > 0 if from u to v.	*/
 	int		c;	/* capacity.			*/
-	pthread_mutex_t lock;    /* Mutex to protect f. */
 };
 
 struct graph_t {
@@ -109,10 +90,6 @@ struct graph_t {
 	node_t*		s;	/* source.			*/
 	node_t*		t;	/* sink.			*/
 	node_t*		excess;	/* nodes with e > 0 except s,t.	*/
-	pthread_mutex_t excess_lock;    /* Mutex to protect f. */
-	pthread_mutex_t meta_excess_mutex;
-	pthread_cond_t excess_cond;
-	int excess_lock_is_locked;
 };
 
 /* a remark about C arrays. the phrase above 'array of n nodes' is using
@@ -137,6 +114,12 @@ struct graph_t {
  * as any basic type such as int.
  * 
  */
+
+#ifdef MAIN
+static graph_t* new_graph(FILE* in, int n, int m);
+#else
+static graph_t* new_graph(int n, int m, int s, int t, xedge_t* e);
+#endif
 
 static char* progname;
 
@@ -315,55 +298,6 @@ static void connect(node_t* u, node_t* v, int c, edge_t* e)
 	add_edge(v, e);
 }
 
-static graph_t* new_graph(FILE* in, int n, int m)
-{
-	graph_t*	g;
-	node_t*		u;
-	node_t*		v;
-	int		i;
-	int		a;
-	int		b;
-	int		c;
-	
-	g = xmalloc(sizeof(graph_t));
-
-	g->n = n;
-	g->m = m;
-	
-	g->v = xcalloc(n, sizeof(node_t));
-	g->e = xcalloc(m, sizeof(edge_t));
-
-	// Initialize the pthread_mutex_t for each edge
-    for (int i = 0; i < m; i++) {
-        pthread_mutex_init(&g->e[i].lock, NULL);
-    }
-
-	// Initialize the pthread_mutex_t for each node
-	for (int i = 0; i < n; i++) {
-        pthread_mutex_init(&g->v[i].lock, NULL);
-    }
-
-	// Initialize the mutex for excess lock
-	pthread_mutex_init(&g->excess_lock, NULL);
-	pthread_mutex_init(&g->meta_excess_mutex, NULL);
-	pthread_cond_init(&g->excess_cond, NULL);
-	g->excess_lock_is_locked = 0;
-	g->s = &g->v[0];
-	g->t = &g->v[n-1];
-	g->excess = NULL;
-
-	for (i = 0; i < m; i += 1) {
-		a = next_int();
-		b = next_int();
-		c = next_int();
-		u = &g->v[a];
-		v = &g->v[b];
-		connect(u, v, c, g->e+i);
-	}
-
-	return g;
-}
-
 static void enter_excess(graph_t* g, node_t* v)
 {
 	/* put v at the front of the list of nodes
@@ -374,16 +308,11 @@ static void enter_excess(graph_t* g, node_t* v)
 	 * it first is simplest.
 	 *
 	 */
-	pthread_mutex_lock(&g->meta_excess_mutex);
-	
+
 	if (v != g->t && v != g->s) {
 		v->next = g->excess;
 		g->excess = v;
 	}
-	pr("entred excess %d, g->excess is %p\n: ", id(g, v), (g->excess ? (void*)g->excess : "NULL"));
-	
-	// g->excess_lock_is_locked = 0;
-	pthread_mutex_unlock(&g->meta_excess_mutex);
 }
 
 static node_t* leave_excess(graph_t* g)
@@ -395,135 +324,25 @@ static node_t* leave_excess(graph_t* g)
 	 *
 	 */
 
-	pthread_mutex_lock(&g->meta_excess_mutex);
-
 	v = g->excess;
 
 	if (v != NULL)
 		g->excess = v->next;
-	if(v == NULL)
-		pr("left excess: NULL\n");
-	else
-		pr("left excess: %d\n", id(g, v));
-
-
-	// g->excess_lock_is_locked = 0;
-	pthread_mutex_unlock(&g->meta_excess_mutex);
 
 	return v;
 }
 
-static int excess_left(graph_t* g)
-{
-	node_t*		v;
-
-	/* take any node from the set of nodes with excess preflow
-	 * and for simplicity we always take the first.
-	 *
-	 */
-	
-	pthread_mutex_lock(&g->meta_excess_mutex);
-
-	v = g->excess;
-
-	pthread_mutex_unlock(&g->meta_excess_mutex);
-	if(v == NULL){
-		pr("left excess: NULL\n");
-		return 0;}
-	else {
-		pr("left excess: %d\n", id(g, v));
-		return 1;
-	}
-}
-
-
-void wait_all_locks(pthread_mutex_t* lock1, pthread_mutex_t* lock2, pthread_mutex_t* lock3)
-{
-    int lock1_acquired = 0;
-    int lock2_acquired = 0;
-    int lock3_acquired = 0;
-
-    while (1) {
-		pr("WAIT ALL LOCKS\n");
-        // Try to lock the first mutex
-        if (pthread_mutex_trylock(lock1) == 0) {
-            lock1_acquired = 1;
-			// Try to lock the second mutex
-			if (pthread_mutex_trylock(lock2) == 0) {
-				lock2_acquired = 1;
-				// Try to lock the third mutex
-				if (pthread_mutex_trylock(lock3) == 0) {
-					lock3_acquired = 1;
-				}
-			}
-        }
-		pr("GOT ALL LOCKS\n");
-
-        // If all locks are acquired, break the loop
-        if (lock1_acquired && lock2_acquired && lock3_acquired) {
-            break;
-        }
-
-        // If any lock failed, release the ones that were successfully acquired
-        if (lock1_acquired) {
-            pthread_mutex_unlock(lock1);
-            lock1_acquired = 0;
-        }
-        if (lock2_acquired) {
-            pthread_mutex_unlock(lock2);
-            lock2_acquired = 0;
-        }
-        if (lock3_acquired) {
-            pthread_mutex_unlock(lock3);
-            lock3_acquired = 0;
-        }
-
-        // Optionally: Add a small delay to avoid busy-waiting
-        // usleep(10); // Sleep for 100 microseconds before retrying
-    }
-}
-
-void add_alive_threads(int* alive_threads, pthread_mutex_t* alive_threads_lock) {
-    int value;
-
-    // Lock the mutex before reading the value
-    pthread_mutex_lock(alive_threads_lock);
-
-    // Read the value of alive_threads_counter
-    (*alive_threads)++;
-	pr("Alive threads increased to: %d\n", (*alive_threads));
-
-    // Unlock the mutex after reading
-    pthread_mutex_unlock(alive_threads_lock);
-}
-
-void sub_alive_threads(int* alive_threads, pthread_mutex_t* alive_threads_lock) {
-    // Lock the mutex before reading the value
-    pthread_mutex_lock(alive_threads_lock);
-
-    // Read the value of alive_threads_counter
-    (*alive_threads)--;
-	pr("Alive threads reduced to: %d\n", (*alive_threads));
-
-    // Unlock the mutex after reading
-    pthread_mutex_unlock(alive_threads_lock);
-}
-
 static void push(graph_t* g, node_t* u, node_t* v, edge_t* e)
 {
-	wait_all_locks(&e->u->lock, &e->v->lock, &e->lock);
 	int		d;	/* remaining capacity of the edge. */
 
 	pr("push from %d to %d: ", id(g, u), id(g, v));
 	pr("f = %d, c = %d, so ", e->f, e->c);
 	
 	if (u == e->u) {
-		// Min of u.excess and (edge capacity - edge flow)
 		d = MIN(u->e, e->c - e->f);
 		e->f += d;
 	} else {
-		// Min of u.excess and (edge capacity + edge flow)
-		// Since flow is in other direction
 		d = MIN(u->e, e->c + e->f);
 		e->f -= d;
 	}
@@ -555,13 +374,6 @@ static void push(graph_t* g, node_t* u, node_t* v, edge_t* e)
 
 		enter_excess(g, v);
 	}
-
-	// Once done, unlock all mutexes
-    pthread_mutex_unlock(&u->lock);
-    pthread_mutex_unlock(&v->lock);
-    pthread_mutex_unlock(&e->lock);
-
-	// fprintf(stderr, "thread ending\n");
 }
 
 static void relabel(graph_t* g, node_t* u)
@@ -581,88 +393,7 @@ static node_t* other(node_t* u, edge_t* e)
 		return e->u;
 }
 	
-// Function to print the graph
-void print_graph(graph_t* g) {
-    // Print all nodes
-    pr("Nodes:\n");
-    for (int i = 0; i < g->n; i++) {
-        node_t* node = &g->v[i];
-        pr("Node %d: excess = %d, height = %d\n", id(g, node), node->e, node->h);
-    }
-
-    // Print all edges
-    pr("\nEdges:\n");
-    for (int i = 0; i < g->m; i++) {
-        edge_t* edge = &g->e[i];
-        pr("Edge between Node %d and Node %d: capacity = %d, flow = %d\n",
-               id(g, edge->u), id(g, edge->v), edge->c, edge->f);
-    }
-}
-
-void *push_or_relabel(void* arg){
-	thread_data_t* args = (thread_data_t*) arg;
-	int i = args->i;
-	graph_t* g = args->g; 
-
-	node_t* u;
-	node_t* v;
-	edge_t* e;
-	int b; //Direction
-	list_t*	p; //Adjecency list
-	while ((u = leave_excess(g)) != NULL ){
-		/* u is any node with excess preflow. */
-	
-		pr("[%d] Selected u = %d with h = %d and e = %d\n", i, id(g, u), u->h, u->e);
-
-		/* if we can push we must push and only if we could
-		* not push anything, we are allowed to relabel.
-		*
-		* we can push to multiple nodes if we wish but
-		* here we just push once for simplicity.
-		*
-		*/
-
-		v = NULL;
-		p = u->edge; // p = first item of adjacency list
-
-		while (p != NULL) {
-			e = p->edge; // e = edge in current first item in p ()
-			p = p->next; // change p to point to next item in adjecency list
-
-			if (u == e->u) { //If selected node is u, set direction to positive
-				v = e->v;
-				b = 1;
-			} else { // Else, set direction as negative
-				v = e->u;
-				b = -1;
-			}
-			// U is always selected, v is always other
-
-			//Check if height of u is larger than v 
-			// AND that directed excess flow is smaller than capacity
-			// Why does second part matter?? Can't we send a subset of the possible flow
-			// My guess is we will break cause we want to try push over current edge
-			if (u->h > v->h && b * e->f < e->c) 
-				break;
-			else
-				v = NULL;
-		}
-
-			if (v != NULL) {
-				
-				pr("Starting thread in main\n");
-				push(g, u, v, e);
-
-			}
-			else {
-				relabel(g, u);
-			}
-		pr("LOOP PREFORMED\n");
-	}
-	// free(args);
-}
-
-int preflow(graph_t* g, int n_threads)
+static int xpreflow(graph_t* g)
 {
 	node_t*		s;
 	node_t*		u;
@@ -676,7 +407,11 @@ int preflow(graph_t* g, int n_threads)
 
 	p = s->edge;
 
-	// Copy init from Lab 1
+	/* start by pushing as much as possible (limited by
+	 * the edge capacity) from the source to its neighbors.
+	 *
+	 */
+
 	while (p != NULL) {
 		e = p->edge;
 		p = p->next;
@@ -684,56 +419,82 @@ int preflow(graph_t* g, int n_threads)
 		s->e += e->c;
 		push(g, s, other(s, e), e);
 	}
+	
+	/* then loop until only s and/or t have excess preflow. */
 
-	// Create n new threads for this:
-    pthread_t threads[n_threads]; // Array to hold thread identifiers
-    thread_data_t thread_args[n_threads]; // Array to hold arguments for each thread
+	while ((u = leave_excess(g)) != NULL) {
 
-	// Start all threads
-	for(int i = 0; i < n_threads; i++){
-		thread_args[i].g = g; // Pass pointer to graph structure
-        thread_args[i].i = i;  // Pass index to thread
+		/* u is any node with excess preflow. */
 
-        int rc = pthread_create(&threads[i], NULL, push_or_relabel, &thread_args[i]);
-		if (rc) {
-            printf("Error:unable to create thread, %d\n", rc);
-            exit(-1);
-        }
+		pr("selected u = %d with ", id(g, u));
+		pr("h = %d and e = %d\n", u->h, u->e);
+
+		/* if we can push we must push and only if we could
+		 * not push anything, we are allowed to relabel.
+		 *
+		 * we can push to multiple nodes if we wish but
+		 * here we just push once for simplicity.
+		 *
+		 */
+
+		v = NULL;
+		p = u->edge;
+
+		while (p != NULL) {
+			e = p->edge;
+			p = p->next;
+
+			if (u == e->u) {
+				v = e->v;
+				b = 1;
+			} else {
+				v = e->u;
+				b = -1;
+			}
+
+			if (u->h > v->h && b * e->f < e->c)
+				break;
+			else
+				v = NULL;
+		}
+
+		if (v != NULL)
+			push(g, u, v, e);
+		else
+			relabel(g, u);
 	}
 
-	// Joing the n threads
-	for (int i = 0; i < n_threads; i++) {
-        pthread_join(threads[i], NULL);
-    }
-
-	//return the answer 
 	return g->t->e;
 }
 
+static void free_graph(graph_t* g);
 
+int preflow(int n, int m, int s, int t, xedge_t* e)
+{
+	graph_t*	g;
+	int		f;
+	double		begin;
+	double		end;
+
+#if TIME
+	init_timebase();
+	begin = timebase_sec();
+#endif
+	g = new_graph(n, m, s, t, e);
+	f = xpreflow(g);
+	free_graph(g);
+#if TIME
+	end = timebase_sec();
+	printf("t = %10.3lf s\n", end-begin);
+#endif
+	return f;
+}
 
 static void free_graph(graph_t* g)
 {
 	int		i;
 	list_t*		p;
 	list_t*		q;
-
-	// Clean up: destroy mutexes and free memory
-    for (int i = 0; i < g->m; i++) {
-		
-        // pthread_mutex_lock(&g->e[i].lock);
-        pthread_mutex_destroy(&g->e[i].lock);
-		// pr("freed lock\n");
-    }
-	 for (int i = 0; i < g->n; i++) {
-        // pthread_mutex_destroy(&g->v[i].lock);
-        pthread_mutex_destroy(&g->v[i].lock);
-		// pr("freed lock\n");
-    }
-
-	pthread_mutex_destroy(&g->excess_lock);
-	pthread_mutex_destroy(&g->meta_excess_mutex);
-	pthread_cond_destroy(&g->excess_cond);
 
 	for (i = 0; i < g->n; i += 1) {
 		p = g->v[i].edge;
@@ -746,6 +507,42 @@ static void free_graph(graph_t* g)
 	free(g->v);
 	free(g->e);
 	free(g);
+}
+
+#ifdef MAIN
+
+static graph_t* new_graph(FILE* in, int n, int m)
+{
+	graph_t*	g;
+	node_t*		u;
+	node_t*		v;
+	int		i;
+	int		a;
+	int		b;
+	int		c;
+	
+	g = xmalloc(sizeof(graph_t));
+
+	g->n = n;
+	g->m = m;
+	
+	g->v = xcalloc(n, sizeof(node_t));
+	g->e = xcalloc(m, sizeof(edge_t));
+
+	g->s = &g->v[0];
+	g->t = &g->v[n-1];
+	g->excess = NULL;
+
+	for (i = 0; i < m; i += 1) {
+		a = next_int();
+		b = next_int();
+		c = next_int();
+		u = &g->v[a];
+		v = &g->v[b];
+		connect(u, v, c, g->e+i);
+	}
+
+	return g;
 }
 
 int main(int argc, char* argv[])
@@ -771,7 +568,7 @@ int main(int argc, char* argv[])
 
 	fclose(in);
 
-	f = preflow(g, 1);
+	f = preflow(g);
 
 	printf("f = %d\n", f);
 
@@ -779,3 +576,40 @@ int main(int argc, char* argv[])
 
 	return 0;
 }
+
+#else
+
+static graph_t* new_graph(int n, int m, int s, int t, xedge_t* e)
+{
+	graph_t*	g;
+	node_t*		u;
+	node_t*		v;
+	int		i;
+	int		a;
+	int		b;
+	int		c;
+	
+	g = xmalloc(sizeof(graph_t));
+
+	g->n = n;
+	g->m = m;
+	
+	g->v = xcalloc(n, sizeof(node_t));
+	g->e = xcalloc(m, sizeof(edge_t));
+
+	g->s = &g->v[0];
+	g->t = &g->v[n-1];
+	g->excess = NULL;
+
+	for (i = 0; i < m; i += 1) {
+		a = e[i].u;
+		b = e[i].v;
+		c = e[i].c;
+		u = &g->v[a];
+		v = &g->v[b];
+		connect(u, v, c, g->e+i);
+	}
+
+	return g;
+}
+#endif

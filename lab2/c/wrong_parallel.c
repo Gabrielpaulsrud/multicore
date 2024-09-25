@@ -39,7 +39,7 @@
 
 
 
-#define PRINT 1			/* enable/disable prints. */
+#define PRINT 0			/* enable/disable prints. */
 
 /* the funny do-while next clearly performs one iteration of the loop.
  * if you are really curious about why there is a loop, please check
@@ -112,6 +112,9 @@ struct graph_t {
 	node_t*		t;	/* sink.			*/
 	node_t*		excess;	/* nodes with e > 0 except s,t.	*/
 	pthread_mutex_t excess_lock;    /* Mutex to protect f. */
+	pthread_mutex_t meta_excess_mutex;
+	pthread_cond_t excess_cond;
+	int excess_lock_is_locked;
 };
 
 /* a remark about C arrays. the phrase above 'array of n nodes' is using
@@ -344,6 +347,9 @@ static graph_t* new_graph(FILE* in, int n, int m)
 
 	// Initialize the mutex for excess lock
 	pthread_mutex_init(&g->excess_lock, NULL);
+	pthread_mutex_init(&g->meta_excess_mutex, NULL);
+	pthread_cond_init(&g->excess_cond, NULL);
+	g->excess_lock_is_locked = 0;
 	g->s = &g->v[0];
 	g->t = &g->v[n-1];
 	g->excess = NULL;
@@ -370,20 +376,16 @@ static void enter_excess(graph_t* g, node_t* v)
 	 * it first is simplest.
 	 *
 	 */
-	while (1)
-	{
-		pr("In trylock func: lenter_excess\n");
-		if (pthread_mutex_trylock(&g->excess_lock) == 0){
-			break;
-		}
-	}
+	pthread_mutex_lock(&g->meta_excess_mutex);
 	
 	if (v != g->t && v != g->s) {
 		v->next = g->excess;
 		g->excess = v;
 	}
 	pr("entred excess %d, g->excess is %p\n: ", id(g, v), (g->excess ? (void*)g->excess : "NULL"));
-	pthread_mutex_unlock(&g->excess_lock);
+	
+	// g->excess_lock_is_locked = 0;
+	pthread_mutex_unlock(&g->meta_excess_mutex);
 }
 
 static node_t* leave_excess(graph_t* g)
@@ -394,13 +396,9 @@ static node_t* leave_excess(graph_t* g)
 	 * and for simplicity we always take the first.
 	 *
 	 */
-	while (1)
-	{
-		pr("In trylock func: leave_excess\n");
-		if (pthread_mutex_trylock(&g->excess_lock) == 0){
-			break;
-		}
-	}
+
+	pthread_mutex_lock(&g->meta_excess_mutex);
+
 	v = g->excess;
 
 	if (v != NULL)
@@ -410,7 +408,9 @@ static node_t* leave_excess(graph_t* g)
 	else
 		pr("left excess: %d\n", id(g, v));
 
-	pthread_mutex_unlock(&g->excess_lock);
+
+	// g->excess_lock_is_locked = 0;
+	pthread_mutex_unlock(&g->meta_excess_mutex);
 
 	return v;
 }
@@ -423,16 +423,12 @@ static int excess_left(graph_t* g)
 	 * and for simplicity we always take the first.
 	 *
 	 */
-	while (1)
-	{
-		pr("In trylock func: excess_left\n");
-		if (pthread_mutex_trylock(&g->excess_lock) == 0){
-			break;
-		}
-	}
+	
+	pthread_mutex_lock(&g->meta_excess_mutex);
+
 	v = g->excess;
 
-	pthread_mutex_unlock(&g->excess_lock);
+	pthread_mutex_unlock(&g->meta_excess_mutex);
 	if(v == NULL){
 		pr("left excess: NULL\n");
 		return 0;}
@@ -463,6 +459,7 @@ void wait_all_locks(pthread_mutex_t* lock1, pthread_mutex_t* lock2, pthread_mute
 				}
 			}
         }
+		pr("GOT ALL LOCKS\n");
 
         // If all locks are acquired, break the loop
         if (lock1_acquired && lock2_acquired && lock3_acquired) {
@@ -526,10 +523,10 @@ static void* push(void* args)
     edge_t* e = push_args->e;
 	int* thread_counter = push_args->thread_counter;
 	pthread_mutex_t* thread_counter_lock = push_args->thread_counter_lock;
-	pthread_cond_t* thread_cond = push_args->condThreadContinue;
+	pthread_cond_t* cond = push_args->condThreadContinue;
 	// Wait until all locks (u, v, and e) are acquired
-    wait_all_locks(&u->lock, &v->lock, &e->lock);
-
+    // wait_all_locks(&u->lock, &v->lock, &e->lock);
+	wait_all_locks(&e->u->lock, &e->v->lock, &e->lock);
 	int		d;	/* remaining capacity of the edge. */
 
 	pr("push from %d to %d: ", id(g, u), id(g, v));
@@ -582,10 +579,11 @@ static void* push(void* args)
 	sub_alive_threads(thread_counter, thread_counter_lock);
 
 	pr("SIGNALING TO COND\n");
-	pthread_cond_signal(thread_cond);
+	pthread_cond_signal(cond);
 	pr("HAVE SIGNALED TO COND\n");
 
 	free(args);
+	// fprintf(stderr, "thread ending\n");
 }
 
 static void relabel(graph_t* g, node_t* u)
@@ -668,9 +666,9 @@ int preflow(graph_t* g)
 
 	pthread_cond_t condThreadContinue;
 	pthread_cond_init(&condThreadContinue, NULL);
-	pthread_mutex_t condMutex;
-	pthread_mutex_init(&condMutex, NULL);
-	pthread_mutex_lock(&condMutex);
+	// pthread_mutex_t condMutex;
+	// pthread_mutex_init(&condMutex, NULL);
+	// pthread_mutex_lock(&condMutex);
 
     // Allocate space for thread IDs
     threads = xmalloc(max_threads * sizeof(pthread_t));
@@ -692,7 +690,9 @@ int preflow(graph_t* g)
 		e = p->edge;
 		p = p->next;
 
+		pthread_mutex_lock(&s->lock);
 		s->e += e->c;
+		pthread_mutex_unlock(&s->lock);
 		// old_push(g, s, other(s, e), e);
 		push_args_t* push_args = malloc(sizeof(push_args_t));
 		push_args->g = g;
@@ -724,12 +724,12 @@ int preflow(graph_t* g)
 	pr("START LOOP OVER\n");
 	print_graph(g);
 
-	pthread_t* main_threads = NULL;  // Pointer to array of threads
-    int main_thread_count = 0;    // Number of threads created
-    int main_max_threads = 10;    // Adjust size as needed; consider dynamically resizing if necessary
+	// pthread_t* main_threads = NULL;  // Pointer to array of threads
+    // int main_thread_count = 0;    // Number of threads created
+    // int main_max_threads = 10;    // Adjust size as needed; consider dynamically resizing if necessary
 
     // Allocate space for thread IDs
-    main_threads = xmalloc(main_max_threads * sizeof(pthread_t));
+    // main_threads = xmalloc(main_max_threads * sizeof(pthread_t));
 
 	int main_alive_threads_counter = 0;
 	pthread_mutex_t main_alive_threads_lock;
@@ -805,16 +805,17 @@ int preflow(graph_t* g)
 
 			push_args_t* main_push_args = malloc(sizeof(push_args_t));
 			if (v != NULL) {
-				if (main_thread_count >= main_max_threads) {
-					// Optionally resize the array here
-					main_max_threads *= 2;
-					main_threads = realloc(main_threads, main_max_threads * sizeof(pthread_t));
-					if (threads == NULL) {
-						error("realloc failed");
-						exit(1);
-					}
-					pr("MAINLOOP: reallocated threads to %d threads\n", max_threads);
-				}
+				pthread_t new_thread;
+				// if (main_thread_count >= main_max_threads) {
+				// 	// Optionally resize the array here
+				// 	main_max_threads *= 2;
+				// 	main_threads = realloc(main_threads, main_max_threads * sizeof(pthread_t));
+				// 	if (threads == NULL) {
+				// 		error("realloc failed");
+				// 		exit(1);
+				// 	}
+				// 	pr("MAINLOOP: reallocated threads to %d threads\n", max_threads);
+				// }
 				// old_push(g, u, v, e);
 				main_push_args->g = g;
 				main_push_args->u = u;
@@ -827,14 +828,15 @@ int preflow(graph_t* g)
 				
 				pr("Starting thread in main\n");
 				add_alive_threads(&main_alive_threads_counter, &main_alive_threads_lock);
-				int result = pthread_create(&main_threads[main_thread_count], NULL, push, main_push_args);
+				int result = pthread_create(&new_thread, NULL, push, main_push_args);
+				pthread_detach(new_thread);
 				if (result != 0) {
 					// Handle thread creation failure
 					perror("pthread_create failed");
 					free(main_push_args);  // Free memory if thread creation fails
 					exit(1);
 				}
-				main_thread_count++;
+				// main_thread_count++;
 				// pthread_join(main_threads[main_thread_count-1], NULL);
 
 			}
@@ -862,12 +864,13 @@ int preflow(graph_t* g)
 
 	}
 	//Maybe don't need to wait?
+	pthread_mutex_unlock(&main_alive_threads_lock);
 	pr("MAIN DONE\n");
-	print_graph(g);
-	for (size_t i = 0; i < main_thread_count; i++) {
-        pthread_join(main_threads[i], NULL);
-    }
-	free(main_threads);
+	// print_graph(g);
+	// for (size_t i = 0; i < main_thread_count; i++) {
+    //     pthread_join(main_threads[i], NULL);
+    // }
+	// free(main_threads);
 	// pthread_cond_destroy(&condThreadContinue);
 	pthread_mutex_destroy(&main_alive_threads_lock);
 	pthread_cond_destroy(&condThreadContinue);
@@ -885,15 +888,20 @@ static void free_graph(graph_t* g)
 
 	// Clean up: destroy mutexes and free memory
     for (int i = 0; i < g->m; i++) {
+		
+        // pthread_mutex_lock(&g->e[i].lock);
         pthread_mutex_destroy(&g->e[i].lock);
 		// pr("freed lock\n");
     }
 	 for (int i = 0; i < g->n; i++) {
+        // pthread_mutex_destroy(&g->v[i].lock);
         pthread_mutex_destroy(&g->v[i].lock);
 		// pr("freed lock\n");
     }
 
 	pthread_mutex_destroy(&g->excess_lock);
+	pthread_mutex_destroy(&g->meta_excess_mutex);
+	pthread_cond_destroy(&g->excess_cond);
 
 	for (i = 0; i < g->n; i += 1) {
 		p = g->v[i].edge;
