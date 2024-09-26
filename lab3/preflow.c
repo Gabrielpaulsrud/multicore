@@ -822,19 +822,21 @@ void *push_or_relabel(void* arg){
 		}
 		pr("[%d] Waiting for second barrier\n", i);
 		pthread_barrier_wait(second_barrier);
-	}
-
-	// ADD A SECOND BARRIER!!!!!
-	
+	}	
 	// free(args);
 	pr("[%d] Decided to die\n", i);
-	sub_alive_threads(args->n_alive_threads, args->n_alive_threads_lock);
-	do {
+	pr("[%d] First dead wait\n", i);
+	pthread_barrier_wait(first_barrier);
+	sub_alive_threads(n_alive_threads, n_alive_threads_lock);
+	pr("[%d] Second dead wait\n", i);
+	pthread_barrier_wait(second_barrier);
+	pr("[%d] Going to die\n", i);
+	while (alive_threads(n_alive_threads, n_alive_threads_lock)) {
 		pr("[%d] First dead wait\n", i);
 		pthread_barrier_wait(first_barrier);
 		pr("[%d] Second dead wait\n", i);
 		pthread_barrier_wait(second_barrier);
-	} while (alive_threads(args->n_alive_threads, args->n_alive_threads_lock));
+	}
 	pr("[%d] Finaly over\n", i);
 }
 
@@ -963,6 +965,14 @@ int main(int argc, char* argv[])
 	int		m;	/* number of edges.		*/
 
 	progname = argv[0];	/* name is a string in argv[0]. */
+	int n_threads;
+	if (argc > 1) {
+        n_threads = atoi(argv[1]);  // Convert the first argument to an int
+        printf("n_threads: %d\n", n_threads);
+    }
+	else {
+		n_threads = 2;
+	}
 
 	in = stdin;		/* same as System.in in Java.	*/
 
@@ -977,7 +987,7 @@ int main(int argc, char* argv[])
 
 	fclose(in);
 
-	f = preflow(g, 2);
+	f = preflow(g, n_threads);
 
 	printf("f = %d\n", f);
 
