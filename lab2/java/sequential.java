@@ -91,8 +91,8 @@ class Graph {
 		int	d;	/* remaining capacity of the edge. */
 
 
-		pr("U with height: " + u.h + " And excess: " + u.e);
-		pr("V with height: " + v.h + " And excess: " + v.e);
+		pr("U with index: " + u.i + "height: " + u.h + " And excess: " + u.e);
+		pr("V with index: " + v.i + " height: " + v.h + " And excess: " + v.e);
 		if (u == a.u) {
 			// Min of u.excess and (edge capacity - edge flow)
 			d = Math.min(u.e, a.c - a.f);
@@ -150,7 +150,7 @@ class Graph {
 			v = null;
 			a = null;
 			excess = u.next;
-			pr("U with height: " + u.h + " And excess: " + u.e);
+			pr("U with index: " + u.i + "height: " + u.h + " And excess: " + u.e);
 
 			iter = u.adj.listIterator();
 			while (iter.hasNext()) {

@@ -1,0 +1,108 @@
+[-1] In Push 
+[-1] U with index: (0) height: 5 And excess: 33 
+[-1] V with index: (2) height: 0 And excess: 0 
+[-1] Pushed: 33 From: 0 To: 2 
+[-1] In Push 
+[-1] U with index: (0) height: 5 And excess: 48 
+[-1] V with index: (1) height: 0 And excess: 0 
+[-1] Pushed: 48 From: 0 To: 1 
+[1] while excess yay [0] while excess yay [3] while excess yay 
+
+[2] while excess yay [1] U with index: (2) height: 0 And excess: 33 
+
+[4] while excess yay 
+[3] U with index: (1) height: 0 And excess: 48 
+
+[0] ...3 
+Relable: 2 To: 1 
+[1] while excess yay 
+[31] while excess yay 
+[31] ...6 
+[29] while excess yay 
+[1] U with index: (2) height: 1 And excess: 33 
+[32] while excess yay 
+Relable: 1 To: 1 
+[37] while excess yay 
+[29] ...7 
+[1] In Push 
+[1] U with index: (2) height: 1 And excess: 33 
+[1] V with index: (3) height: 0 And excess: 0 
+[1] Pushed: 14 From: 2 To: 3 
+[1] while excess yay 
+[18] while excess yay [48] while excess yay 
+[48] U with index: (2) height: 1 And excess: 19 
+[16] while excess yay 
+[1] U with index: (3) height: 0 And excess: 14 
+[47] while excess yay 
+
+[17] while excess yay 
+[48] In Push 
+[16] ...10 
+Relable: 3 To: 1 
+[48] U with index: (2) height: 1 And excess: 19 
+[2] ...13 
+[48] V with index: (4) height: 0 And excess: 0 
+[48] Pushed: 19 From: 2 To: 4 
+[4] ...12 
+[1] while excess yay 
+[17] U with index: (3) height: 1 And excess: 14 
+[17] In Push 
+[17] U with index: (3) height: 1 And excess: 14 
+[18] ...11 
+[17] V with index: (4) height: 0 And excess: 19 
+[47] ...12 
+[17] Pushed: 13 From: 3 To: 4 
+[17] while excess yay 
+[14] while excess yay 
+[17] U with index: (3) height: 1 And excess: 1 
+Relable: 3 To: 2 
+[49] while excess yay 
+[29] ...13 
+[31] ...13 
+[37] ...13 
+[3] while excess yay 
+[43] while excess yay 
+[32] U with index: (1) height: 1 And excess: 48 
+[43] ...15 
+Relable: 1 To: 2 
+[32] while excess yay 
+[27] while excess yay 
+[27] ...16 
+[38] while excess yay 
+[0] ...16 
+[32] U with index: (1) height: 2 And excess: 48 
+[32] In Push 
+[24] while excess yay 
+[32] U with index: (1) height: 2 And excess: 48 
+[24] ...18 
+[32] V with index: (2) height: 1 And excess: 0 
+[32] Pushed: 48 From: 1 To: 2 
+[38] ...18 
+[18] ...18 
+[3] ...18 
+[4] ...18 
+[49] ...18 
+[17] while excess yay 
+[14] U with index: (3) height: 2 And excess: 1 
+[14] In Push 
+[14] U with index: (3) height: 2 And excess: 1 
+[17] ...19 
+[14] V with index: (2) height: 1 And excess: 48 
+[14] Pushed: 1 From: 3 To: 2 
+[2] ...18 
+[1] ...18 
+[16] ...18 
+[47] ...18 
+[32] while excess yay 
+[6] while excess yay 
+[6] ...19 
+[36] while excess yay 
+[33] while excess yay 
+[32] U with index: (2) height: 1 And excess: 49 
+[36] ...20 [32] In Push 
+[32] U with index: (2) height: 1 And excess: 49 
+[32] V with index: (4) height: 0 And excess: 32 
+[32] Pushed: 49 From: 2 To: 4 
+
+[29] ...20 
+[33] ...20 

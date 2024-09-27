@@ -6,7 +6,7 @@ import java.util.List;
 import java.io.*;
 
 class Print {
-    static boolean print = true;
+    static boolean print = false;
 
 	static void mby(Object... args) {
 		if (print) {
@@ -20,19 +20,35 @@ class Print {
 
 class PushThread extends BasePushThread {
 	
-	public PushThread(Node s, Node t){
-		this.s = s;
-		this.t = t;
+	static boolean is_done = false;
+
+	public PushThread(Node s, Node t, int i){
+	this.s = s;
+	this.t = t;
+	this.i = i;
+	}
+
+	@Override
+	void push(Node u, Node v, Edge a){
+		increaseOngoingPushes();
+		super.push(u, v, a);
+		decreaseOngoingPushes();
 	}
 
 	@Override
 	public void run() {
-		while (excess != null) {
-			Print.mby("while excess yay");
+		while (get_excess() != null || getOngoingPushes() != 0) {
+			//while (get_excess() != null ){
+			Print.mby("[" + this.i + "] Excess at start: "+ excess_string());
 			v = null;
 			a = null;
 			Node u = leave_excess();
-			Print.mby("U with height: " + u.height() + " And excess: " + u.excess());
+			if (u == null){
+				Print.mby("LEAVE NULL");
+				break;
+			}
+			
+			Print.mby("[" + this.i + "] "+ "U with index: (" + u.i + ") height: " + u.height() + " And excess: " + u.excess());
 
 			iter = u.adj.listIterator();
 			while (iter.hasNext()) {
@@ -46,11 +62,11 @@ class PushThread extends BasePushThread {
 					b = -1;
 				}
 				if (u.height() > v.height() && b * a.flow() < a.c){
-					Print.mby("BREAK");
+					// Print.mby("BREAK");
 					break;
 				}
 				else{
-					Print.mby("v is null");
+					// Print.mby("v is null");
 					v = null;
 				}
 			}
@@ -63,13 +79,17 @@ class PushThread extends BasePushThread {
 				enter_excess(u);
 			}
 		}
+		Print.mby("[" + this.i + "] "+ "End while");
+		synchronized (BasePushThread.class){
+			BasePushThread.class.notifyAll();
+		}
 	}
-	
 }
 
 class InitialPushThread extends BasePushThread {
 
-	public InitialPushThread(Node s, Node t){
+	public InitialPushThread(Node s, Node t, int i){
+		this.i = i;
 		this.s = s;
 		this.t = t;
 	}
@@ -77,7 +97,6 @@ class InitialPushThread extends BasePushThread {
 	@Override
 	public void run(){
 		iter = s.adj.listIterator();
-		Print.mby("Tjo");
 		while (iter.hasNext()) {
 			a = iter.next();
 			s.e += a.c;
@@ -87,51 +106,99 @@ class InitialPushThread extends BasePushThread {
 }
 
 class BasePushThread extends Thread {
-	static Node excess; //mby should be static?
+	static Node excess; //mby should be static? 
+	static int n_ongoing_pushes;
 	Node s;
 	Node t;
-	Boolean print = true;
 	ListIterator<Edge>	iter;
 	int b; //Direction
+	int i; //Index
 
 	
 	Node v;
 	Edge a;
+
+	@Override
 	public void run(){
 		assert false; //This class is not intended to be ran itself.
 	}
 
-	void enter_excess(Node u)
-	{
-		if (u != s && u != t) {
-			if (excess != null){
-				if (u==excess){
-					assert false;
-				}
-			}
-			synchronized (BasePushThread.class){
-				Print.mby(u.i + " Just enetered excess...");
-				u.next = excess;
-				excess = u;
-				BasePushThread.class.notify();
-			}
+	private static final Object nThreadsLock = new Object();
+
+	void increaseOngoingPushes() {
+    	synchronized (nThreadsLock) {
+			// Print.mby("[" + this.i + "] " + "Increased it");
+        	n_ongoing_pushes++;
+    	}
+	}
+
+	void decreaseOngoingPushes() {
+		synchronized (nThreadsLock) {
+			// Print.mby("[" + this.i + "] " + "Decreased it");
+			n_ongoing_pushes--;
 		}
 	}
 
-	Node leave_excess()
-	{
+	int getOngoingPushes() {
+		synchronized (nThreadsLock) {
+			return n_ongoing_pushes;
+		}
+	}
+
+	void enter_excess(Node u){
+		synchronized (BasePushThread.class){
+			if (u != s && u != t) {
+				if (excess != null){
+					if (u==excess){
+						assert false;
+					}
+				}
+					Print.mby("[" + this.i + "] "+ u.i + " Just enetered excess...");
+					u.next = excess;
+					excess = u;
+					BasePushThread.class.notify();
+				}
+			}
+		}
+
+	Node get_excess(){
+		Node current_excess;
+		synchronized (BasePushThread.class){
+			current_excess = excess;
+		}
+		return current_excess;
+
+	}
+
+	String excess_string(){
+		synchronized (BasePushThread.class){
+			String printstring = "";
+			Node current = excess;
+			while (current != null) {
+				printstring = printstring + " " + current.i;
+				current = current.next;  // Move to the next node
+			}
+			return printstring;
+		}
+	}
+
+	Node leave_excess(){
 		Node leaver;
 		synchronized (BasePushThread.class){
-			leaver = excess;
 			while (excess == null) {
 				try {
+					Print.mby("[" + this.i + "] "+ "..." + getOngoingPushes());
+					if (getOngoingPushes() == 0){
+						return null;
+					}
 					BasePushThread.class.wait();
 				} catch (InterruptedException e) {
+					Print.mby("JEEES");
 					e.printStackTrace();
 					assert false;
 				}
 			}
-			Print.mby("Successfully left");
+			leaver = excess;
 			excess = leaver.next;
 		}
 		return leaver;
@@ -155,13 +222,13 @@ class BasePushThread extends Thread {
 	{
 		int	d;	/* remaining capacity of the edge. */
 
-
-		Print.mby("U with height: " + u.h + " And excess: " + u.e);
-		Print.mby("V with height: " + v.h + " And excess: " + v.e);
+		Print.mby("[" + this.i + "] "+ "In Push");
+		Print.mby("[" + this.i + "] "+ "U with index: (" + u.i + ") height: " + u.height() + " And excess: " + u.excess());
+		Print.mby("[" + this.i + "] "+ "V with index: (" + v.i + ") height: " + v.height() + " And excess: " + v.excess());
 		if (u == a.u) {
 			// Min of u.excess and (edge capacity - edge flow)
 			d = Math.min(u.excess(), a.c - a.flow());
-			a.f += d;
+			a.changeFlow(d);
 		} else {
 			// Min of u.excess and (edge capacity + edge flow)
 			// Since flow is in other direction
@@ -169,22 +236,29 @@ class BasePushThread extends Thread {
 			a.changeFlow(-d);
 		}
 
-		Print.mby("Pushed: "+ d + " From: " + u.i + " To: " + v.i);
+		Print.mby("[" + this.i + "] "+ "Pushed: "+ d + " From: " + u.i + " To: " + v.i);
 		
+		synchronized (u.lock) {
+			u.changeExcess(-d);
+			if(u.excess() > 0){
+				enter_excess(u);
+			}
+		}
 
-		u.changeExcess(-d);
-		v.changeExcess(d);
+		synchronized (v.lock) {
+			v.changeExcess(d);
+			if(v.excess() == d){
+				enter_excess(v);
+			}
+		}
+		
 		assert d > 0 ;
 		assert u.e >= 0 ;
-		assert Math.abs(a.f) <= a.c;
+		assert Math.abs(a.flow()) <= a.c;
 
-
-		if(u.excess() > 0){
-			enter_excess(u);
-		}
-		if(v.excess() == d){
-			enter_excess(v);
-		}
+		
+		
+		Print.mby("[" + this.i + "] " + "Excess after push: " + excess_string());
 	}
 }
 
@@ -234,7 +308,6 @@ class Graph {
    }
 
 
-
 	int preflow(int s, int t, int n_threads)
 	{
 		ListIterator<Edge>	iter;
@@ -248,19 +321,19 @@ class Graph {
 		node[s].h = n;
 		Node excess = null;
 		BasePushThread.excess = excess;
-		InitialPushThread init = new InitialPushThread(node[s], node[t]);
+		InitialPushThread init = new InitialPushThread(node[s], node[t], -1);
 		init.start();
 		try {
 			init.join();
 		} catch (InterruptedException e) {
+			Print.mby("JEEES 2");
 			e.printStackTrace();
 			assert false;
 		}
-		print_graph();
-		 
+		PushThread.n_ongoing_pushes = 0;
 		PushThread[] pushThreads = new PushThread[n_threads];
         for (int i = 0; i < n_threads; ++i){
-			pushThreads[i] = new PushThread(node[s], node[t]);
+			pushThreads[i] = new PushThread(node[s], node[t], i);
 		}
 		for (int i = 0; i < n_threads; ++i){
 			pushThreads[i].start();
@@ -269,10 +342,12 @@ class Graph {
 			try {
 				pushThreads[i].join();
 			} catch (InterruptedException e) {
+				Print.mby("JEEES 3");
 				e.printStackTrace();
 				assert false;
 			}
 		}
+		print_graph();
 
 		// spawn threasd + wait ofr threads
 
@@ -286,6 +361,7 @@ class Node {
 	int	i;
 	Node	next;
 	LinkedList<Edge>	adj;
+	final Object lock = new Object();
 
 	Node(int i)
 	{
@@ -293,30 +369,37 @@ class Node {
 		adj = new LinkedList<Edge>();
 	}
 
-	synchronized void relabel()
+	void relabel()
 	{
-		Print.mby("Relable: "+ i + " To: " + (h+1));
-		h++;
+		synchronized (this.lock) {
+			Print.mby("Relable: "+ i + " To: " + (h+1));
+			h++;
+		}
 	}
 
-	synchronized int height()
+	int height()
 	{
-		Print.mby("Relable: "+ i + " To: " + (h+1));
-		return h;
+		// Print.mby("Relable: "+ i + " To: " + (h+1));
+		synchronized (this.lock) {
+			return h;
+		}
 	}
 
-	synchronized void changeExcess(int increase)
+	void changeExcess(int increase)
 	{
-		Print.mby("Set: "+ i + " excess to: " + (e+increase));
-		e = e + increase;
+		// Print.mby("Set: "+ i + " excess to: " + (e+increase));
+		synchronized (this.lock) 
+			{e = e + increase;
+		}
 	}
 
-	synchronized int excess()
+	int excess()
 	{
-		Print.mby("Read: "+ i + " excess as: " + e);
-		return e;
+		// Print.mby("Read: "+ i + " excess as: " + e);
+		synchronized (this.lock) {			
+			return e;
+		}
 	}
-
 }
 
 class Edge {
@@ -324,6 +407,8 @@ class Edge {
 	Node	v;
 	int	f;
 	int	c;
+	final Object lock = new Object();
+
 
 	Edge(Node u, Node v, int c)
 	{
@@ -333,16 +418,18 @@ class Edge {
 
 	}
 
-	synchronized void changeFlow(int increase)
+	void changeFlow(int increase)
 	{
-		Print.mby("Set: " + u.i + " -> " + v.i + " flow to: " + (f+increase));
-		f = f + increase;
+		// Print.mby("Set: " + u.i + " -> " + v.i + " flow to: " + (f+increase));
+		synchronized (this.lock){
+		f = f + increase;}
 	}
 
-	synchronized int flow()
-	{
-		Print.mby("Read: " + u.i + " -> " + v.i + " flow as: " + f);
-		return f;
+	int flow(){
+		// Print.mby("Read: " + u.i + " -> " + v.i + " flow as: " + f);
+		synchronized (this.lock){
+			return f;
+		}
 	}
 }
 
