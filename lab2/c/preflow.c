@@ -34,7 +34,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
-//#include <unistd.h> //Why this lib?
+#include <unistd.h>
 #include <time.h> // Include this for time-related functions
 
 
@@ -442,6 +442,8 @@ void wait_all_locks(pthread_mutex_t* lock1, pthread_mutex_t* lock2, pthread_mute
     int lock1_acquired = 0;
     int lock2_acquired = 0;
     int lock3_acquired = 0;
+	int backoff = 1; // Initial backoff time in microseconds
+
 
     while (1) {
 		pr("WAIT ALL LOCKS\n");
@@ -457,12 +459,13 @@ void wait_all_locks(pthread_mutex_t* lock1, pthread_mutex_t* lock2, pthread_mute
 				}
 			}
         }
-		pr("GOT ALL LOCKS\n");
+		
 
         // If all locks are acquired, break the loop
         if (lock1_acquired && lock2_acquired && lock3_acquired) {
             break;
         }
+		pr("GOT ALL LOCKS\n");
 
         // If any lock failed, release the ones that were successfully acquired
         if (lock1_acquired) {
@@ -479,7 +482,8 @@ void wait_all_locks(pthread_mutex_t* lock1, pthread_mutex_t* lock2, pthread_mute
         }
 
         // Optionally: Add a small delay to avoid busy-waiting
-        // usleep(10); // Sleep for 100 microseconds before retrying
+        usleep(backoff); // Sleep for 100 microseconds before retrying
+		backoff = backoff * 2;
     }
 }
 
@@ -566,8 +570,10 @@ static void push(graph_t* g, node_t* u, node_t* v, edge_t* e)
 
 static void relabel(graph_t* g, node_t* u)
 {
-	u->h += 1;
+	pthread_mutex_lock(&u->lock);
 
+	u->h += 1;
+	pthread_mutex_unlock(&u->lock);
 	pr("relabel %d now h = %d\n", id(g, u), u->h);
 
 	enter_excess(g, u);
@@ -609,9 +615,10 @@ void *push_or_relabel(void* arg){
 	edge_t* e;
 	int b; //Direction
 	list_t*	p; //Adjecency list
+	int n_nodes_processed;
 	while ((u = leave_excess(g)) != NULL ){
 		/* u is any node with excess preflow. */
-	
+		n_nodes_processed++;
 		pr("[%d] Selected u = %d with h = %d and e = %d\n", i, id(g, u), u->h, u->e);
 
 		/* if we can push we must push and only if we could
@@ -642,7 +649,16 @@ void *push_or_relabel(void* arg){
 			// AND that directed excess flow is smaller than capacity
 			// Why does second part matter?? Can't we send a subset of the possible flow
 			// My guess is we will break cause we want to try push over current edge
-			if (u->h > v->h && b * e->f < e->c) 
+			int height_u;
+			pthread_mutex_lock(&u->lock);
+			height_u = u->h;
+			pthread_mutex_unlock(&u->lock);
+			int height_v;
+			pthread_mutex_lock(&v->lock);
+			height_v = v->h;
+			pthread_mutex_unlock(&v->lock);
+
+			if (height_u > height_v && b * e->f < e->c) 
 				break;
 			else
 				v = NULL;
@@ -659,7 +675,7 @@ void *push_or_relabel(void* arg){
 			}
 		pr("LOOP PREFORMED\n");
 	}
-	// free(args);
+	// printf("Nr of nodes processed %d\n", n_nodes_processed);
 }
 
 int preflow(graph_t* g, int n_threads)
@@ -704,6 +720,7 @@ int preflow(graph_t* g, int n_threads)
 	// Joing the n threads
 	for (int i = 0; i < n_threads; i++) {
         pthread_join(threads[i], NULL);
+		printf("Thread %d terminating\n", i);
     }
 
 	//return the answer 
@@ -771,7 +788,7 @@ int main(int argc, char* argv[])
 
 	fclose(in);
 
-	f = preflow(g, 1);
+	f = preflow(g, 10);
 
 	printf("f = %d\n", f);
 
