@@ -34,13 +34,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
-
+#include <unistd.h>
 #include <time.h> // Include this for time-related functions
 #include "pthread_barrier.h"  
 
 
 
-#define PRINT 1			/* enable/disable prints. */
+#define PRINT 0			/* enable/disable prints. */
 
 /* the funny do-while next clearly performs one iteration of the loop.
  * if you are really curious about why there is a loop, please check
@@ -72,9 +72,9 @@ typedef struct node_t	node_t;
 typedef struct edge_t	edge_t;
 typedef struct list_t	list_t;
 typedef struct thread_data_t	thread_data_t;
-typedef struct exces_queues_t exces_queues_t;
+typedef struct excess_queue_t excess_queue_t;
 
-struct exces_queues_t {
+struct excess_queue_t {
 	node_t* excess;
 	pthread_mutex_t* lock;
 };
@@ -86,6 +86,8 @@ struct thread_data_t {
 	pthread_barrier_t* second_barrier;
 	int* n_alive_threads;
 	pthread_mutex_t* n_alive_threads_lock;
+	excess_queue_t** excess_queue;
+	int n_threads;
 };
 
 struct list_t {
@@ -372,7 +374,7 @@ static graph_t* new_graph(FILE* in, int n, int m)
 	return g;
 }
 
-static void enter_excess(graph_t* g, node_t* v)
+static void enter_excess(graph_t* g, node_t* v, excess_queue_t* excess_queue)
 {
 	/* put v at the front of the list of nodes
 	 * that have excess preflow > 0.
@@ -382,19 +384,19 @@ static void enter_excess(graph_t* g, node_t* v)
 	 * it first is simplest.
 	 *
 	 */
-	pthread_mutex_lock(&g->meta_excess_mutex);
+	pthread_mutex_lock(excess_queue->lock);
 	
 	if (v != g->t && v != g->s) {
-		v->next = g->excess;
-		g->excess = v;
+		v->next = excess_queue->excess;
+		excess_queue->excess = v;
 	}
 	pr("entred excess %d, g->excess is %p\n: ", id(g, v), (g->excess ? (void*)g->excess : "NULL"));
 	
 	// g->excess_lock_is_locked = 0;
-	pthread_mutex_unlock(&g->meta_excess_mutex);
+	pthread_mutex_unlock(excess_queue->lock);
 }
 
-static node_t* leave_excess(graph_t* g)
+static node_t* leave_excess(graph_t* g, excess_queue_t* excess_queue)
 {
 	node_t*		v;
 
@@ -403,12 +405,12 @@ static node_t* leave_excess(graph_t* g)
 	 *
 	 */
 
-	pthread_mutex_lock(&g->meta_excess_mutex);
+	pthread_mutex_lock(excess_queue->lock);
 
-	v = g->excess;
+	v = excess_queue->excess;
 
 	if (v != NULL)
-		g->excess = v->next;
+		excess_queue->excess = v->next;
 	if(v == NULL)
 		pr("left excess: NULL\n");
 	else
@@ -416,12 +418,12 @@ static node_t* leave_excess(graph_t* g)
 
 
 	// g->excess_lock_is_locked = 0;
-	pthread_mutex_unlock(&g->meta_excess_mutex);
+	pthread_mutex_unlock(excess_queue->lock);
 
 	return v;
 }
 
-static int excess_left(graph_t* g)
+static int excess_left(graph_t* g, excess_queue_t* excess_queue)
 {
 	node_t*		v;
 
@@ -430,11 +432,11 @@ static int excess_left(graph_t* g)
 	 *
 	 */
 	
-	pthread_mutex_lock(&g->meta_excess_mutex);
+	pthread_mutex_lock(excess_queue->lock);
 
 	v = g->excess;
 
-	pthread_mutex_unlock(&g->meta_excess_mutex);
+	pthread_mutex_unlock(excess_queue->lock);
 	if(v == NULL){
 		pr("left excess: NULL\n");
 		return 0;}
@@ -450,6 +452,8 @@ void wait_all_locks(pthread_mutex_t* lock1, pthread_mutex_t* lock2, pthread_mute
     int lock1_acquired = 0;
     int lock2_acquired = 0;
     int lock3_acquired = 0;
+	int backoff = 1; // Initial backoff time in microseconds
+
 
     while (1) {
 		pr("WAIT ALL LOCKS\n");
@@ -465,12 +469,13 @@ void wait_all_locks(pthread_mutex_t* lock1, pthread_mutex_t* lock2, pthread_mute
 				}
 			}
         }
-		pr("GOT ALL LOCKS\n");
+		
 
         // If all locks are acquired, break the loop
         if (lock1_acquired && lock2_acquired && lock3_acquired) {
             break;
         }
+		pr("GOT ALL LOCKS\n");
 
         // If any lock failed, release the ones that were successfully acquired
         if (lock1_acquired) {
@@ -487,7 +492,8 @@ void wait_all_locks(pthread_mutex_t* lock1, pthread_mutex_t* lock2, pthread_mute
         }
 
         // Optionally: Add a small delay to avoid busy-waiting
-        // usleep(10); // Sleep for 100 microseconds before retrying
+        usleep(backoff); // Sleep for 100 microseconds before retrying
+		backoff = backoff * 2;
     }
 }
 
@@ -517,7 +523,19 @@ void sub_alive_threads(int* alive_threads, pthread_mutex_t* alive_threads_lock) 
     pthread_mutex_unlock(alive_threads_lock);
 }
 
-static void push(graph_t* g, node_t* u, node_t* v, edge_t* e)
+void add_alive_threads(int* alive_threads, pthread_mutex_t* alive_threads_lock) {
+    // Lock the mutex before reading the value
+    pthread_mutex_lock(alive_threads_lock);
+
+    // Read the value of alive_threads_counter
+    (*alive_threads)++;
+	pr("Alive threads increased to: %d\n", (*alive_threads));
+
+    // Unlock the mutex after reading
+    pthread_mutex_unlock(alive_threads_lock);
+}
+
+static void push(graph_t* g, node_t* u, node_t* v, edge_t* e, excess_queue_t* excess_queue)
 {
 	wait_all_locks(&e->u->lock, &e->v->lock, &e->lock);
 	int		d;	/* remaining capacity of the edge. */
@@ -551,7 +569,7 @@ static void push(graph_t* g, node_t* u, node_t* v, edge_t* e)
 
 		/* still some remaining so let u push more. */
 
-		enter_excess(g, u);
+		enter_excess(g, u, excess_queue);
 	}
 
 	if (v->e == d) {
@@ -561,7 +579,7 @@ static void push(graph_t* g, node_t* u, node_t* v, edge_t* e)
 		 *
 		 */
 
-		enter_excess(g, v);
+		enter_excess(g, v, excess_queue);
 	}
 
 	// Once done, unlock all mutexes
@@ -572,13 +590,13 @@ static void push(graph_t* g, node_t* u, node_t* v, edge_t* e)
 	// fprintf(stderr, "thread ending\n");
 }
 
-static void relabel(graph_t* g, node_t* u)
+static void relabel(graph_t* g, node_t* u, excess_queue_t* excess_queue)
 {
 	u->h += 1;
 
 	pr("relabel %d now h = %d\n", id(g, u), u->h);
 
-	enter_excess(g, u);
+	enter_excess(g, u, excess_queue);
 }
 
 static node_t* other(node_t* u, edge_t* e)
@@ -607,77 +625,7 @@ void print_graph(graph_t* g) {
     }
 }
 
-void *_push_or_relabel(void* arg){
-	thread_data_t* args = (thread_data_t*) arg;
-	int i = args->i;
-	graph_t* g = args->g;
-	pthread_barrier_t* barrier = args->first_barrier;
-
-	node_t* u;
-	node_t* v;
-	edge_t* e;
-	int b; //Direction
-	list_t*	p; //Adjecency list
-	while ((u = leave_excess(g)) != NULL ){
-		/* u is any node with excess preflow. */
-	
-		pr("[%d] Selected u = %d with h = %d and e = %d\n", i, id(g, u), u->h, u->e);
-
-		/* if we can push we must push and only if we could
-		* not push anything, we are allowed to relabel.
-		*
-		* we can push to multiple nodes if we wish but
-		* here we just push once for simplicity.
-		*
-		*/
-
-		v = NULL;
-		p = u->edge; // p = first item of adjacency list
-
-		while (p != NULL) {
-			e = p->edge; // e = edge in current first item in p ()
-			p = p->next; // change p to point to next item in adjecency list
-
-			if (u == e->u) { //If selected node is u, set direction to positive
-				v = e->v;
-				b = 1;
-			} else { // Else, set direction as negative
-				v = e->u;
-				b = -1;
-			}
-			// U is always selected, v is always other
-
-			//Check if height of u is larger than v 
-			// AND that directed excess flow is smaller than capacity
-			// Why does second part matter?? Can't we send a subset of the possible flow
-			// My guess is we will break cause we want to try push over current edge
-			if (u->h > v->h && b * e->f < e->c) 
-				break;
-			else
-				v = NULL;
-		}
-		pr("[%d] Waiting for barrier\n", i);
-		pthread_barrier_wait(barrier);
-		if (v != NULL) {
-			pr("Starting thread in main\n");
-			push(g, u, v, e);
-
-		}
-		else {
-			relabel(g, u);
-		}
-	}
-	// free(args);
-	pr("[%d] Decided to die\n", i);
-	sub_alive_threads(args->n_alive_threads, args->n_alive_threads_lock);
-	do {
-		pr("[%d] Dead wait\n", i);
-		pthread_barrier_wait(barrier);
-	} while (alive_threads(args->n_alive_threads, args->n_alive_threads_lock));
-	pr("[%d] Finaly over\n", i);
-}
-
-void *__push_or_relabel(void* arg){
+void *push_or_relabel(void* arg){
 	thread_data_t* args = (thread_data_t*) arg;
 	int i = args->i;
 	graph_t* g = args->g;
@@ -685,24 +633,25 @@ void *__push_or_relabel(void* arg){
 	pthread_barrier_t* second_barrier = args->second_barrier;
 	int* n_alive_threads = args->n_alive_threads;
 	pthread_mutex_t* n_alive_threads_lock = args->n_alive_threads_lock;
+	excess_queue_t** excess_queues = args->excess_queue;
+	int n_threads = args->n_threads;
+	int next_queue_index = i;
+	int is_alive = 1;
 
 	node_t* u;
 	node_t* v;
 	edge_t* e;
 	int b; //Direction
 	list_t*	p; //Adjecency list
-	int has_reported_dead = 0;
-	while ((u = leave_excess(g)) != NULL){
+	// while ((u = leave_excess(g, excess_queues[i])) != NULL){
+	while(alive_threads(n_alive_threads, n_alive_threads_lock)){
 		/* u is any node with excess preflow. */
-		if (u == NULL){
-			// if (!has_reported_dead){
-			// 	pr("[%d] Reported dead\n", i);
-				// sub_alive_threads(args->n_alive_threads, args->n_alive_threads_lock);
-			// }
-			pr("[%d] Dead wait\n", i);
-			pthread_barrier_wait(first_barrier);
-		}
-		else {
+		if ((u = leave_excess(g, excess_queues[i])) != NULL){
+			if (!is_alive){
+				is_alive = 1;
+				pr("[%d] Decided to rescurect\n", i);
+				add_alive_threads(n_alive_threads, n_alive_threads_lock);
+			}
 			pr("[%d] Selected u = %d with h = %d and e = %d\n", i, id(g, u), u->h, u->e);
 
 			/* if we can push we must push and only if we could
@@ -742,107 +691,38 @@ void *__push_or_relabel(void* arg){
 			pthread_barrier_wait(first_barrier);
 			if (v != NULL) {
 				pr("Starting thread in main\n");
-				push(g, u, v, e);
+				push(g, u, v, e, excess_queues[next_queue_index%n_threads]); //TODO error? testsmall:)
 
 			}
 			else {
-				relabel(g, u);
+				relabel(g, u, excess_queues[next_queue_index%n_threads]);
 			}
+			next_queue_index++;
+			pr("[%d] Waiting for second barrier\n", i);
+			pthread_barrier_wait(second_barrier);
 		}
-		// ADD A SECOND BARRIER!!!!!
-		pr("[%d] Waiting for second barrier\n", i);
-		pthread_barrier_wait(second_barrier);
-	}
-	// free(args);
-	// pr("[%d] Decided to die\n", i);
-	// sub_alive_threads(args->n_alive_threads, args->n_alive_threads_lock);
-	// do {
-	// 	pr("[%d] Dead wait\n", i);
-	// 	pthread_barrier_wait(barrier);
-	// } while (alive_threads(args->n_alive_threads, args->n_alive_threads_lock));
-	pr("[%d] Finaly over\n", i);
-}
-
-void *push_or_relabel(void* arg){
-	thread_data_t* args = (thread_data_t*) arg;
-	int i = args->i;
-	graph_t* g = args->g;
-	pthread_barrier_t* first_barrier = args->first_barrier;
-	pthread_barrier_t* second_barrier = args->second_barrier;
-	int* n_alive_threads = args->n_alive_threads;
-	pthread_mutex_t* n_alive_threads_lock = args->n_alive_threads_lock;
-
-	node_t* u;
-	node_t* v;
-	edge_t* e;
-	int b; //Direction
-	list_t*	p; //Adjecency list
-	int has_reported_dead = 0;
-	while ((u = leave_excess(g)) != NULL){
-		/* u is any node with excess preflow. */
-		
-		pr("[%d] Selected u = %d with h = %d and e = %d\n", i, id(g, u), u->h, u->e);
-
-		/* if we can push we must push and only if we could
-		* not push anything, we are allowed to relabel.
-		*
-		* we can push to multiple nodes if we wish but
-		* here we just push once for simplicity.
-		*
-		*/
-
-		v = NULL;
-		p = u->edge; // p = first item of adjacency list
-
-		while (p != NULL) {
-			e = p->edge; // e = edge in current first item in p ()
-			p = p->next; // change p to point to next item in adjecency list
-
-			if (u == e->u) { //If selected node is u, set direction to positive
-				v = e->v;
-				b = 1;
-			} else { // Else, set direction as negative
-				v = e->u;
-				b = -1;
+		else{
+			pr("[%d] First dead wait\n", i);
+			pthread_barrier_wait(first_barrier);
+			if (is_alive){
+				is_alive = 0;
+				pr("[%d] Decided to die\n", i);
+				sub_alive_threads(n_alive_threads, n_alive_threads_lock);
 			}
-			// U is always selected, v is always other
-
-			//Check if height of u is larger than v 
-			// AND that directed excess flow is smaller than capacity
-			// Why does second part matter?? Can't we send a subset of the possible flow
-			// My guess is we will break cause we want to try push over current edge
-			if (u->h > v->h && b * e->f < e->c) 
-				break;
-			else
-				v = NULL;
+			pr("[%d] Second dead wait\n", i);
+			pthread_barrier_wait(second_barrier);
 		}
-		pr("[%d] Waiting for first barrier\n", i);
-		pthread_barrier_wait(first_barrier);
-		if (v != NULL) {
-			pr("Starting thread in main\n");
-			push(g, u, v, e);
-
-		}
-		else {
-			relabel(g, u);
-		}
-		pr("[%d] Waiting for second barrier\n", i);
-		pthread_barrier_wait(second_barrier);
 	}	
 	// free(args);
-	pr("[%d] Decided to die\n", i);
-	pr("[%d] First dead wait\n", i);
-	pthread_barrier_wait(first_barrier);
-	sub_alive_threads(n_alive_threads, n_alive_threads_lock);
-	pr("[%d] Second dead wait\n", i);
-	pthread_barrier_wait(second_barrier);
-	pr("[%d] Going to die\n", i);
-	while (alive_threads(n_alive_threads, n_alive_threads_lock)) {
-		pr("[%d] First dead wait\n", i);
-		pthread_barrier_wait(first_barrier);
-		pr("[%d] Second dead wait\n", i);
-		pthread_barrier_wait(second_barrier);
-	}
+	
+	
+	// pr("[%d] Going to die\n", i);
+	// while (alive_threads(n_alive_threads, n_alive_threads_lock)) {
+	// 	pr("[%d] First dead wait\n", i);
+	// 	pthread_barrier_wait(first_barrier);
+	// 	pr("[%d] Second dead wait\n", i);
+	// 	pthread_barrier_wait(second_barrier);
+	// }
 	pr("[%d] Finaly over\n", i);
 }
 
@@ -862,23 +742,37 @@ int preflow(graph_t* g, int n_threads)
 
 	p = s->edge;
 
+	//Keep track of alive threads
+	int n_alive_threads = n_threads;
+	pthread_mutex_t n_alive_threads_lock;
+	pthread_mutex_init(&n_alive_threads_lock, NULL);
+	excess_queue_t *queue_o = malloc(sizeof(excess_queue_t));
+
+	excess_queue_t *excess_queue[n_threads];
+	//Initialize the excess_queues
+	for (int k=0; k<n_threads; k++){
+		excess_queue_t *queue = xmalloc(sizeof(excess_queue_t));
+		excess_queue[k] = queue;
+
+
+		excess_queue[k]->excess = NULL;
+		queue->lock = xmalloc(sizeof(pthread_mutex_t));
+		pthread_mutex_init(queue->lock, NULL);
+	}
 	// Copy init from Lab 1
+	int j = 0;
 	while (p != NULL) {
 		e = p->edge;
 		p = p->next;
 
 		s->e += e->c;
-		push(g, s, other(s, e), e);
+		push(g, s, other(s, e), e, excess_queue[j%n_threads]);
+		j++;
 	}
 
 	// Create n new threads for this:
     pthread_t threads[n_threads]; // Array to hold thread identifiers
     thread_data_t thread_args[n_threads]; // Array to hold arguments for each thread
-
-	//Keep track of alive threads
-	int n_alive_threads = n_threads;
-	pthread_mutex_t n_alive_threads_lock;
-	pthread_mutex_init(&n_alive_threads_lock, NULL);
 
 	pthread_barrier_t first_barrier;
 	pthread_barrierattr_t first_barrier_attr;
@@ -900,7 +794,8 @@ int preflow(graph_t* g, int n_threads)
 		thread_args[i].second_barrier = &second_barrier;
 		thread_args[i].n_alive_threads = &n_alive_threads;
 		thread_args[i].n_alive_threads_lock = &n_alive_threads_lock;
-
+		thread_args[i].excess_queue = excess_queue;
+		thread_args[i].n_threads = n_threads;
 
         int rc = pthread_create(&threads[i], NULL, push_or_relabel, &thread_args[i]);
 		if (rc) {
@@ -920,6 +815,9 @@ int preflow(graph_t* g, int n_threads)
     }
 	pthread_barrier_destroy(&first_barrier);
 	pthread_barrier_destroy(&second_barrier);
+	for (int k=0; k<n_threads; k++){
+		pthread_mutex_destroy(excess_queue[k]->lock);
+	}
 	//return the answer 
 	return g->t->e;
 }
@@ -977,7 +875,7 @@ int main(int argc, char* argv[])
         printf("n_threads: %d\n", n_threads);
     }
 	else {
-		n_threads = 2;
+		n_threads = 20;
 	}
 
 	in = stdin;		/* same as System.in in Java.	*/
