@@ -72,6 +72,12 @@ typedef struct node_t	node_t;
 typedef struct edge_t	edge_t;
 typedef struct list_t	list_t;
 typedef struct thread_data_t	thread_data_t;
+typedef struct exces_queues_t exces_queues_t;
+
+struct exces_queues_t {
+	node_t* excess;
+	pthread_mutex_t* lock;
+};
 
 struct thread_data_t {
     graph_t *g;

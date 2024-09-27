@@ -3,7 +3,7 @@ triple:          'arm64-apple-darwin'
 binary-path:     preflow
 relocations:
   - { offsetInCU: 0x26, offset: 0x26, size: 0x8, addend: 0x0, symName: _error, symObjAddr: 0x0, symBinAddr: 0x100003344, symSize: 0x7C }
-  - { offsetInCU: 0x59, offset: 0x59, size: 0x8, addend: 0x0, symName: _progname, symObjAddr: 0x5AE0, symBinAddr: 0x100008000, symSize: 0x0 }
+  - { offsetInCU: 0x59, offset: 0x59, size: 0x8, addend: 0x0, symName: _progname, symObjAddr: 0x5AD8, symBinAddr: 0x100008000, symSize: 0x0 }
   - { offsetInCU: 0x2AA, offset: 0x2AA, size: 0x8, addend: 0x0, symName: _error, symObjAddr: 0x0, symBinAddr: 0x100003344, symSize: 0x7C }
   - { offsetInCU: 0x2EC, offset: 0x2EC, size: 0x8, addend: 0x0, symName: _wait_all_locks, symObjAddr: 0x7C, symBinAddr: 0x1000033C0, symSize: 0x70 }
   - { offsetInCU: 0x3BC, offset: 0x3BC, size: 0x8, addend: 0x0, symName: _add_alive_threads, symObjAddr: 0xEC, symBinAddr: 0x100003430, symSize: 0x38 }

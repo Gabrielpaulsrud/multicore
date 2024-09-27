@@ -1,0 +1,8 @@
+tzan
+clang -fsanitize=thread -g preflow.c -o preflow
+./preflow < ../data/tiny/0.in 
+
+helgrind
+gcc -g -o preflow preflow.c -lpthread
+valgrind --tool=helgrind ./preflow < ../data/tiny/0.in
+
