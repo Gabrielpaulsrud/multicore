@@ -724,6 +724,7 @@ void *push_or_relabel(void* arg){
 	// 	pthread_barrier_wait(second_barrier);
 	// }
 	pr("[%d] Finaly over\n", i);
+	return NULL;
 }
 
 
@@ -875,7 +876,7 @@ int main(int argc, char* argv[])
         printf("n_threads: %d\n", n_threads);
     }
 	else {
-		n_threads = 20;
+		n_threads = 5;
 	}
 
 	in = stdin;		/* same as System.in in Java.	*/
