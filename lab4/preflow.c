@@ -97,7 +97,7 @@ struct thread_data_t {
 	pthread_barrier_t* first_barrier;
 	pthread_barrier_t* second_barrier;
 	pthread_barrier_t* third_barrier;
-	int* n_alive_threads;
+	atomic_int* n_alive_threads;
 	pthread_mutex_t* n_alive_threads_lock;
 	excess_queue_t** excess_queue;
 	push_queue_t* push_queue;
@@ -335,8 +335,8 @@ void add_to_queue(push_queue_t* pq, node_t* node) {
         assert(0); // Queue is full, can't add more elements.
     }
     // if (!node->in_push_queue){
-    // if (!atomic_load_explicit(&node->in_push_queue, memory_order_seq_cst)){
-	// 	atomic_store_explicit(&node->in_push_queue, 1, memory_order_seq_cst);
+    // if (!atomic_load_explicit(&node->in_push_queue, memory_order_relaxed)){
+	// 	atomic_store_explicit(&node->in_push_queue, 1, memory_order_relaxed);
     // 	pq->queue[pq->current_index++] = node; // Add node and increment index
 	// }
 	int expected = 0; // Value we expect to find
@@ -354,7 +354,7 @@ node_t* pop_from_queue(push_queue_t* pq) {
     // Decrease the index first to point to the last element
     node_t* last_node = pq->queue[--pq->current_index];
 	// last_node->in_push_queue=0;
-	atomic_store_explicit(&last_node->in_push_queue, 0, memory_order_seq_cst);
+	atomic_store_explicit(&last_node->in_push_queue, 0, memory_order_relaxed);
 	
     return last_node; // Return the last node
 }
@@ -466,7 +466,7 @@ static void enter_excess(graph_t* g, node_t* v, excess_queue_t* excess_queue)
 	 */
 	
 	// pthread_mutex_lock(excess_queue->lock);
-	// if (atomic_load_explicit(&v->in_excess, memory_order_seq_cst)){
+	// if (atomic_load_explicit(&v->in_excess, memory_order_relaxed)){
 	// 	pr("HEHE");
 	// 	// pthread_mutex_unlock(excess_queue->lock);
 	// 	return;
@@ -477,10 +477,11 @@ static void enter_excess(graph_t* g, node_t* v, excess_queue_t* excess_queue)
 	}
 
 	if (v != g->t && v != g->s) {
-		pthread_mutex_lock(excess_queue->lock);
-		v->next = excess_queue->excess;
-		excess_queue->excess = v;
-		pthread_mutex_unlock(excess_queue->lock);
+		// pthread_mutex_lock(excess_queue->lock);
+		// v->next = excess_queue->excess;
+		// excess_queue->excess = v;
+		v->next = atomic_exchange(&excess_queue->excess, v);
+		// pthread_mutex_unlock(excess_queue->lock);
 		// v->in_excess = 1;
 	}
 	
@@ -492,27 +493,44 @@ static void enter_excess(graph_t* g, node_t* v, excess_queue_t* excess_queue)
 
 static node_t* leave_excess(graph_t* g, excess_queue_t* excess_queue)
 {
-	node_t*		v;
+	// node_t*		v;
 
 	/* take any node from the set of nodes with excess preflow
 	 * and for simplicity we always take the first.
 	 *
 	 */
 
-	pthread_mutex_lock(excess_queue->lock);
-	v = excess_queue->excess;
+	// pthread_mutex_lock(excess_queue->lock);
+			// v = excess_queue->excess;
 
-	if (v != NULL){
-		v->in_excess=0;
-		excess_queue->excess = v->next;
+			// if (v != NULL){
+			// 	v->in_excess=0;
+			// 	excess_queue->excess = v->next;
+			// }
+	// node_t *v = atomic_exchange(&excess_queue->excess, NULL);
+
+	// // Check if the old value was not NULL
+	// if (v != NULL) {
+	// 	v->in_excess = 0; // Perform operations on v
+	// 	atomic_store(&excess_queue->excess, v->next); // Atomically update excess to v->next
+	// }
+	node_t *v = atomic_load(&excess_queue->excess);
+	while (v != NULL) {
+		// Try to update excess_queue->excess to v->next only if it is still v
+		if (atomic_compare_exchange_weak(&excess_queue->excess, &v, v->next)) {
+			v->in_excess = 0; // Modify v after ensuring the atomic exchange
+			break;
+		}
+		v = atomic_load(&excess_queue->excess); // Reload in case of failure
 	}
+
 	if(v == NULL)
 		pr("left excess: NULL\n");
 	else
 		pr("left excess: %d\n", id(g, v));
 
 	
-	pthread_mutex_unlock(excess_queue->lock);
+	// pthread_mutex_unlock(excess_queue->lock);
 
 	return v;
 }
@@ -540,42 +558,44 @@ static int excess_left(graph_t* g, excess_queue_t* excess_queue)
 	}
 }
 
-int alive_threads(int* alive_threads, pthread_mutex_t* alive_threads_lock) {
+int alive_threads(atomic_int* alive_threads) {
     // Lock the mutex before reading the value
-    pthread_mutex_lock(alive_threads_lock);
+    // pthread_mutex_lock(alive_threads_lock);
 
     // Read the value of alive_threads_counter
-    int n_alive_threads = *alive_threads;
+    // int n_alive_threads = *alive_threads;
+	int n_alive_threads = atomic_load_explicit(alive_threads, memory_order_relaxed);
 	pr("Alive threads read as: %d\n", (*alive_threads));
 
     // Unlock the mutex after reading
-    pthread_mutex_unlock(alive_threads_lock);
+    // pthread_mutex_unlock(alive_threads_lock);
 
 	return n_alive_threads;
 }
 
-void sub_alive_threads(int* alive_threads, pthread_mutex_t* alive_threads_lock) {
+void sub_alive_threads(atomic_int* alive_threads) {
     // Lock the mutex before reading the value
-    pthread_mutex_lock(alive_threads_lock);
+    // pthread_mutex_lock(alive_threads_lock);
 
     // Read the value of alive_threads_counter
-    (*alive_threads)--;
+    atomic_fetch_sub_explicit(alive_threads, 1, memory_order_relaxed);
 	pr("Alive threads reduced to: %d\n", (*alive_threads));
 
     // Unlock the mutex after reading
-    pthread_mutex_unlock(alive_threads_lock);
+    // pthread_mutex_unlock(alive_threads_lock);
 }
 
-void add_alive_threads(int* alive_threads, pthread_mutex_t* alive_threads_lock) {
+void add_alive_threads(atomic_int* alive_threads) {
     // Lock the mutex before reading the value
-    pthread_mutex_lock(alive_threads_lock);
+    // pthread_mutex_lock(alive_threads_lock);
 
     // Read the value of alive_threads_counter
-    (*alive_threads)++;
+    // (*alive_threads)++;
+	atomic_fetch_add_explicit(alive_threads, 1, memory_order_relaxed);
 	pr("Alive threads increased to: %d\n", (*alive_threads));
 
     // Unlock the mutex after reading
-    pthread_mutex_unlock(alive_threads_lock);
+    // pthread_mutex_unlock(alive_threads_lock);
 }
 
 static void push_to_atomic(graph_t* g, node_t* u, node_t* v, edge_t* e, push_queue_t* push_queue)
@@ -599,17 +619,17 @@ static void push_to_atomic(graph_t* g, node_t* u, node_t* v, edge_t* e, push_que
 	pr("pushing %d\n", d);
 
 	// u->accumulated_push -= d;	//MEMORD
-	atomic_fetch_sub_explicit(&u->accumulated_push, d, memory_order_seq_cst);
+	atomic_fetch_sub_explicit(&u->accumulated_push, d, memory_order_relaxed);
 
 	// v->accumulated_push += d; //MEMORD
-	atomic_fetch_add_explicit(&v->accumulated_push, d, memory_order_seq_cst);
+	atomic_fetch_add_explicit(&v->accumulated_push, d, memory_order_relaxed);
 
 	add_to_queue(push_queue, u);
 	add_to_queue(push_queue, v);
 
 	/* the following are always true. */
 	// assert(d >= 0);
-	// assert(u->e + atomic_load_explicit(&u->accumulated_push, memory_order_seq_cst) >= 0); //MEMORD. AND DO CORRCTLY
+	// assert(u->e + atomic_load_explicit(&u->accumulated_push, memory_order_relaxed) >= 0); //MEMORD. AND DO CORRCTLY
 	// assert(e->f <= e->c);
 
 }
@@ -619,7 +639,7 @@ static void execute_atomic_node(graph_t* g, node_t* u, excess_queue_t* excess_qu
 	// if (u->accumulated_push == 0){
 	// 	return;
 	// }
-	int accumulated_push_value = atomic_exchange_explicit(&u->accumulated_push, 0, memory_order_seq_cst);
+	int accumulated_push_value = atomic_exchange_explicit(&u->accumulated_push, 0, memory_order_relaxed);
 	u->e += accumulated_push_value;
 
 	// u->in_excess = 0;
@@ -693,7 +713,7 @@ void *push_or_relabel(void* arg){
 	pthread_barrier_t* first_barrier = args->first_barrier;
 	pthread_barrier_t* second_barrier = args->second_barrier;
 	pthread_barrier_t* third_barrier = args->third_barrier;
-	int* n_alive_threads = args->n_alive_threads;
+	atomic_int *n_alive_threads = args->n_alive_threads;
 	pthread_mutex_t* n_alive_threads_lock = args->n_alive_threads_lock;
 	excess_queue_t** excess_queues = args->excess_queue;
 	int n_threads = args->n_threads;
@@ -708,7 +728,7 @@ void *push_or_relabel(void* arg){
 	int b; //Direction
 	list_t*	p; //Adjecency list
 	// while ((u = leave_excess(g, excess_queues[i])) != NULL){
-	while(alive_threads(n_alive_threads, n_alive_threads_lock)){
+	while(alive_threads(n_alive_threads)){
 		pr("start while\n");
 		// sleep(1);
 		// usleep(100);
@@ -717,7 +737,7 @@ void *push_or_relabel(void* arg){
 			if (!is_alive){
 				is_alive = 1;
 				pr("[%d] Decided to rescurect\n", i);
-				add_alive_threads(n_alive_threads, n_alive_threads_lock);
+				add_alive_threads(n_alive_threads);
 			}
 			pr("[%d] Selected u = (%d) with h = %d and e = %d\n", i, id(g, u), u->h, u->e);
 
@@ -798,7 +818,7 @@ void *push_or_relabel(void* arg){
 			if (is_alive){
 				is_alive = 0;
 				pr("[%d] Decided to die\n", i);
-				sub_alive_threads(n_alive_threads, n_alive_threads_lock);
+				sub_alive_threads(n_alive_threads);
 			}
 			// pr("[%d] Second dead wait\n", i);
 			pthread_barrier_wait(second_barrier);
@@ -891,7 +911,7 @@ int preflow(graph_t* g, int n_threads)
 	p = s->edge;
 
 	//Keep track of alive threads
-	int n_alive_threads = n_threads;
+	atomic_int n_alive_threads = n_threads;
 	pthread_mutex_t n_alive_threads_lock;
 	pthread_mutex_init(&n_alive_threads_lock, NULL);
 
