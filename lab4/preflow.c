@@ -79,7 +79,7 @@ typedef struct dynamic_list_t dynamic_list_t;
 typedef struct push_queue_t push_queue_t;
 
 struct excess_queue_t {
-	node_t* excess;
+	node_t* _Atomic excess;
 	pthread_mutex_t* lock;
 };
 
@@ -499,8 +499,7 @@ static node_t* leave_excess(graph_t* g, excess_queue_t* excess_queue)
 	 *
 	 */
 
-	// pthread_mutex_lock(excess_queue->lock);
-
+	pthread_mutex_lock(excess_queue->lock);
 	v = excess_queue->excess;
 
 	if (v != NULL){
@@ -513,8 +512,7 @@ static node_t* leave_excess(graph_t* g, excess_queue_t* excess_queue)
 		pr("left excess: %d\n", id(g, v));
 
 	
-	// g->excess_lock_is_locked = 0;
-	// pthread_mutex_unlock(excess_queue->lock);
+	pthread_mutex_unlock(excess_queue->lock);
 
 	return v;
 }
@@ -1035,7 +1033,7 @@ int main(int argc, char* argv[])
         printf("n_threads: %d\n", n_threads);
     }
 	else {
-		n_threads = 40;
+		n_threads = 5;
 	}
 
 	in = stdin;		/* same as System.in in Java.	*/
