@@ -80,7 +80,7 @@ typedef struct push_queue_t push_queue_t;
 
 struct excess_queue_t {
 	node_t* excess;
-	// pthread_mutex_t* lock;
+	pthread_mutex_t* lock;
 };
 
 struct push_queue_t
@@ -477,9 +477,11 @@ static void enter_excess(graph_t* g, node_t* v, excess_queue_t* excess_queue)
 	}
 
 	if (v != g->t && v != g->s) {
+		pthread_mutex_lock(excess_queue->lock);
 		v->next = excess_queue->excess;
 		excess_queue->excess = v;
-		v->in_excess = 1;
+		pthread_mutex_unlock(excess_queue->lock);
+		// v->in_excess = 1;
 	}
 	
 	pr("entred excess (%d), g->excess is %p\n: ", id(g, v), (g->excess ? (void*)g->excess : "NULL"));
@@ -903,8 +905,8 @@ int preflow(graph_t* g, int n_threads)
 
 
 		excess_queue[k]->excess = NULL;
-		// queue->lock = xmalloc(sizeof(pthread_mutex_t));
-		// pthread_mutex_init(queue->lock, NULL);
+		queue->lock = xmalloc(sizeof(pthread_mutex_t));
+		pthread_mutex_init(queue->lock, NULL);
 	}
 	// Copy init from Lab 1
 	int j = 0;
@@ -974,7 +976,7 @@ int preflow(graph_t* g, int n_threads)
 	pthread_barrier_destroy(&third_barrier);
 	free_queue(push_queue);
 	for (int k=0; k<n_threads; k++){
-		// pthread_mutex_destroy(excess_queue[k]->lock);
+		pthread_mutex_destroy(excess_queue[k]->lock);
 	}
 	//return the answer 
 	return g->t->e;
