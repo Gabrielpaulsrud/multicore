@@ -87,6 +87,7 @@ struct thread_data_t {
     int i;
 	pthread_barrier_t* first_barrier;
 	pthread_barrier_t* second_barrier;
+	pthread_barrier_t* third_barrier;
 	int* n_alive_threads;
 	pthread_mutex_t* n_alive_threads_lock;
 	excess_queue_t** excess_queue;
@@ -739,6 +740,7 @@ void *push_or_relabel(void* arg){
 	graph_t* g = args->g;
 	pthread_barrier_t* first_barrier = args->first_barrier;
 	pthread_barrier_t* second_barrier = args->second_barrier;
+	pthread_barrier_t* third_barrier = args->third_barrier;
 	int* n_alive_threads = args->n_alive_threads;
 	pthread_mutex_t* n_alive_threads_lock = args->n_alive_threads_lock;
 	excess_queue_t** excess_queues = args->excess_queue;
@@ -811,17 +813,18 @@ void *push_or_relabel(void* arg){
 				push_to_atomic(g, u, v, e);
 			}
 			pr("[%d] Waiting for first barrier\n", i);
-			// Calculate new pushes accumetavely in atomic variable
+			// Calculate new pushes accumulatively in atomic variable
 			pthread_barrier_wait(first_barrier);
 			if (i == 0){
 				execute_atomic_nodes(g, excess_queues, n_threads);
 			}
+			pthread_barrier_wait(second_barrier);
 			if (v == NULL) {
 				relabel(g, u, excess_queues[id(g, u)%n_threads]);
 			}
 			next_queue_index++;
 			// pr("[%d] Waiting for second barrier\n", i);
-			pthread_barrier_wait(second_barrier);
+			pthread_barrier_wait(third_barrier);
 		}
 		else{
 			// pr("[%d] First dead wait\n", i);
@@ -844,6 +847,7 @@ void *push_or_relabel(void* arg){
 			}
 			// pr("[%d] Second dead wait\n", i);
 			pthread_barrier_wait(second_barrier);
+			pthread_barrier_wait(third_barrier);
 		}
 	}	
 	// free(args);
@@ -972,12 +976,20 @@ int preflow(graph_t* g, int n_threads)
 
 	pthread_barrier_init(&second_barrier, &second_barrier_attr, n_threads);
 
+	pthread_barrier_t third_barrier;
+	pthread_barrierattr_t third_barrier_attr;
+	pthread_barrierattr_init(&third_barrier_attr);
+
+	pthread_barrier_init(&third_barrier, &third_barrier_attr, n_threads);
+
+
 	// Start all threads
 	for(int i = 0; i < n_threads; i++){
 		thread_args[i].g = g; // Pass pointer to graph structure
         thread_args[i].i = i;  // Pass index to thread
 		thread_args[i].first_barrier = &first_barrier;
 		thread_args[i].second_barrier = &second_barrier;
+		thread_args[i].third_barrier = &third_barrier;
 		thread_args[i].n_alive_threads = &n_alive_threads;
 		thread_args[i].n_alive_threads_lock = &n_alive_threads_lock;
 		thread_args[i].excess_queue = excess_queue;
@@ -1001,6 +1013,7 @@ int preflow(graph_t* g, int n_threads)
     }
 	pthread_barrier_destroy(&first_barrier);
 	pthread_barrier_destroy(&second_barrier);
+	pthread_barrier_destroy(&third_barrier);
 	for (int k=0; k<n_threads; k++){
 		pthread_mutex_destroy(excess_queue[k]->lock);
 	}
