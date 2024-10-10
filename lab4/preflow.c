@@ -76,18 +76,32 @@ typedef struct list_t	list_t;
 typedef struct thread_data_t	thread_data_t;
 typedef struct excess_queue_t excess_queue_t;
 typedef struct dynamic_list_t dynamic_list_t;
-typedef struct push_queue_t push_queue_t;
+typedef enum Instruction Instruction;
+typedef struct node_instruction_t node_instruction_t;
+typedef struct instruction_queue_t instruction_queue_t;
+
+enum Instruction {
+  PUSH,
+  RELABEL,
+};
+
+struct node_instruction_t{
+	node_t* u;
+	Instruction instuction; //0=push, 1=
+};
+
+struct instruction_queue_t
+{
+	node_instruction_t** queue;
+	int current_index;
+	int size;
+	//TODO: make resizeable
+};
+
 
 struct excess_queue_t {
 	node_t* _Atomic excess;
-	pthread_mutex_t* lock;
-};
-
-struct push_queue_t
-{
-	node_t** queue;
-	atomic_int current_index;
-	int size;
+	pthread_mutex_t*  lock;
 };
 
 
@@ -99,8 +113,8 @@ struct thread_data_t {
 	pthread_barrier_t* third_barrier;
 	atomic_int* n_alive_threads;
 	pthread_mutex_t* n_alive_threads_lock;
-	excess_queue_t** excess_queue;
-	push_queue_t* push_queue;
+	excess_queue_t** excess_queues;
+	instruction_queue_t** instruction_queues;
 	int n_threads;
 };
 
@@ -317,55 +331,41 @@ static void* xcalloc(size_t n, size_t s)
 	return p;
 }
 
-
-// Function to initialize the queue with a given size
-push_queue_t* init_queue(int size) {
-    push_queue_t* pq = (push_queue_t*)xmalloc(sizeof(push_queue_t));
-
-    pq->queue = (node_t**)xmalloc(size * sizeof(node_t*));
-
-    pq->current_index = 0;
-    pq->size = size; // Set the size of the queue
-    return pq;
+instruction_queue_t* init_queue(int size){
+	instruction_queue_t* iq = (instruction_queue_t*)xmalloc(sizeof(instruction_queue_t));
+	iq->queue = (node_instruction_t**)xmalloc(size * sizeof(node_instruction_t*));
+	iq->current_index = 0;
+	iq->size=size;
+	return iq;
 }
 
-// Function to add an element to the queue
-void add_to_queue(push_queue_t* pq, node_t* node) {
-    if (pq->current_index >= pq->size) {
+void add_to_queue(instruction_queue_t* iq, node_t* node, Instruction inst){
+	if (iq->current_index >= iq->size) {
         assert(0); // Queue is full, can't add more elements.
     }
-    // if (!node->in_push_queue){
-    // if (!atomic_load_explicit(&node->in_push_queue, memory_order_relaxed)){
-	// 	atomic_store_explicit(&node->in_push_queue, 1, memory_order_relaxed);
-    // 	pq->queue[pq->current_index++] = node; // Add node and increment index
-	// }
-	int expected = 0; // Value we expect to find
-	if (atomic_compare_exchange_strong(&node->in_push_queue, &expected, 1)) {
-		// Only one thread will enter this block
-		pq->queue[pq->current_index++] = node; // Add node and increment index
-	}
+	node_instruction_t* node_inst = (node_instruction_t*)xmalloc(sizeof(node_instruction_t));
+	node_inst->instuction = inst;
+	node_inst->u = node;
+	iq->queue[iq->current_index++] = node_inst;
 }
 
-node_t* pop_from_queue(push_queue_t* pq) {
-    if (pq->current_index <= 0) {
+node_instruction_t* pop_from_queue(instruction_queue_t* iq) {
+    if (iq->current_index <= 0) {
         return NULL; // Queue is empty
     }
 
     // Decrease the index first to point to the last element
-    node_t* last_node = pq->queue[--pq->current_index];
-	// last_node->in_push_queue=0;
-	atomic_store_explicit(&last_node->in_push_queue, 0, memory_order_relaxed);
-	
-    return last_node; // Return the last node
+    node_instruction_t* last_instruction = iq->queue[--iq->current_index];
+    return last_instruction; // Return the last node
 }
 
 // Function to reset the index of the queue
-void reset_queue(push_queue_t* pq) {
+void reset_queue(instruction_queue_t* pq) {
     pq->current_index = 0; // Reset index to 0
 }
 
 // Cleanup function to free memory (optional but good practice)
-void free_queue(push_queue_t* pq) {
+void free_queue(instruction_queue_t* pq) {
     free(pq->queue); // Free the queue array
     free(pq); // Free the queue struct
 }
@@ -598,7 +598,7 @@ void add_alive_threads(atomic_int* alive_threads) {
     // pthread_mutex_unlock(alive_threads_lock);
 }
 
-static void push_to_atomic(graph_t* g, node_t* u, node_t* v, edge_t* e, push_queue_t* push_queue)
+static void add_push_instruction(graph_t* g, node_t* u, node_t* v, edge_t* e, instruction_queue_t* instruction_queue)
 {
 	int	d = 0;	/* remaining capacity of the edge. */
 
@@ -624,8 +624,8 @@ static void push_to_atomic(graph_t* g, node_t* u, node_t* v, edge_t* e, push_que
 	// v->accumulated_push += d; //MEMORD
 	atomic_fetch_add_explicit(&v->accumulated_push, d, memory_order_relaxed);
 
-	add_to_queue(push_queue, u);
-	add_to_queue(push_queue, v);
+	add_to_queue(instruction_queue, u, PUSH);
+	add_to_queue(instruction_queue, v, PUSH);
 
 	/* the following are always true. */
 	// assert(d >= 0);
@@ -634,7 +634,7 @@ static void push_to_atomic(graph_t* g, node_t* u, node_t* v, edge_t* e, push_que
 
 }
 
-static void execute_atomic_node(graph_t* g, node_t* u, excess_queue_t* excess_queue){
+static void push_atomic_node(graph_t* g, node_t* u, excess_queue_t* excess_queue){
 	// pr("execute_atomic_node %d, %d\n", u->accumulated_push, u->e);
 	// if (u->accumulated_push == 0){
 	// 	return;
@@ -649,16 +649,36 @@ static void execute_atomic_node(graph_t* g, node_t* u, excess_queue_t* excess_qu
 	// pr("result was: %d\n", u->e);
 }
 
-static void execute_atomic_nodes(graph_t* g, excess_queue_t** excess_queues, int n_threads, int next_queue_ind, push_queue_t* push_queue){
+static void relabel_atomic_node(graph_t* g, node_t* u, excess_queue_t* excess_queue)
+{
+	// pthread_mutex_lock(&u->lock);
+	u->h += 1;
+	// pthread_mutex_unlock(&u->lock);
+	pr("relabel (%d) now h = %d\n", id(g, u), u->h);
+
+	enter_excess(g, u, excess_queue);
+}
+
+static void execute_atomic_nodes(graph_t* g, excess_queue_t** excess_queues, int n_threads, int next_queue_ind, instruction_queue_t** instruction_queue){
 	// Loop over each node and execute it
     // for (int i = 0; i < g->n; i++) {
     //     execute_atomic_node(g, &g->v[i], excess_queues[next_queue_ind%n_threads]);
 	// 	(next_queue_ind)++;
     // }
+	node_instruction_t* inst;
 	node_t* u;
-	while((u=(pop_from_queue(push_queue)))!= NULL){
-		execute_atomic_node(g, u, excess_queues[next_queue_ind%n_threads]);
-		(next_queue_ind)++;
+	for(int i = 0; i<n_threads; i++){
+		while((inst=pop_from_queue(instruction_queue[i]))!=NULL){
+			if (inst->instuction == PUSH){
+				push_atomic_node(g, inst->u, excess_queues[next_queue_ind%n_threads]);
+				// execute_atomic_node(g, u, excess_queues[next_queue_ind%n_threads]);
+			}
+			else{
+				relabel_atomic_node(g, inst->u, excess_queues[next_queue_ind%n_threads]);
+			}
+			(next_queue_ind)++;
+			free(inst);
+		}
 	}
 }
 
@@ -715,11 +735,11 @@ void *push_or_relabel(void* arg){
 	pthread_barrier_t* third_barrier = args->third_barrier;
 	atomic_int *n_alive_threads = args->n_alive_threads;
 	pthread_mutex_t* n_alive_threads_lock = args->n_alive_threads_lock;
-	excess_queue_t** excess_queues = args->excess_queue;
+	excess_queue_t** excess_queues = args->excess_queues;
+	instruction_queue_t** instruction_queues = args->instruction_queues;
 	int n_threads = args->n_threads;
 	int next_queue_index = i;
 	int is_alive = 1;
-	push_queue_t* push_queue = args->push_queue;
 
 
 	node_t* u;
@@ -783,19 +803,19 @@ void *push_or_relabel(void* arg){
 				else
 					v = NULL;
 			}
-			if (v!=NULL){
-				push_to_atomic(g, u, v, e, push_queue);
+			if (v == NULL) {
+				add_to_queue(instruction_queues[i], u, RELABEL);
+			}
+			else {
+				add_push_instruction(g, u, v, e, instruction_queues[i]);
 			}
 			pr("[%d] Waiting for first barrier\n", i);
 			// Calculate new pushes accumulatively in atomic variable
 			pthread_barrier_wait(first_barrier);
 			if (i == 0){
-				execute_atomic_nodes(g, excess_queues, n_threads, next_queue_index, push_queue);
+				execute_atomic_nodes(g, excess_queues, n_threads, next_queue_index, instruction_queues);
 			}
 			pthread_barrier_wait(second_barrier);
-			if (v == NULL) {
-				relabel(g, u, excess_queues[next_queue_index%n_threads]);
-			}
 			next_queue_index++;
 			// pr("[%d] Waiting for second barrier\n", i);
 			pthread_barrier_wait(third_barrier);
@@ -812,7 +832,7 @@ void *push_or_relabel(void* arg){
 			// 	}
 			// }
 			if (i == 0){
-				execute_atomic_nodes(g, excess_queues, n_threads, next_queue_index, push_queue);
+				execute_atomic_nodes(g, excess_queues, n_threads, next_queue_index, instruction_queues);
 				next_queue_index+=1;
 			}
 			if (is_alive){
@@ -915,14 +935,14 @@ int preflow(graph_t* g, int n_threads)
 	pthread_mutex_t n_alive_threads_lock;
 	pthread_mutex_init(&n_alive_threads_lock, NULL);
 
-	excess_queue_t *excess_queue[n_threads];
+	excess_queue_t *excess_queues[n_threads];
 	//Initialize the excess_queues
 	for (int k=0; k<n_threads; k++){
 		excess_queue_t *queue = xmalloc(sizeof(excess_queue_t));
-		excess_queue[k] = queue;
+		excess_queues[k] = queue;
 
 
-		excess_queue[k]->excess = NULL;
+		excess_queues[k]->excess = NULL;
 		queue->lock = xmalloc(sizeof(pthread_mutex_t));
 		pthread_mutex_init(queue->lock, NULL);
 	}
@@ -933,7 +953,7 @@ int preflow(graph_t* g, int n_threads)
 		p = p->next;
 
 		s->e += e->c;
-		push(g, s, other(s, e), e, excess_queue[j%n_threads]);
+		push(g, s, other(s, e), e, excess_queues[j%n_threads]);
 		j++;
 	}
 
@@ -958,7 +978,11 @@ int preflow(graph_t* g, int n_threads)
 	pthread_barrierattr_init(&third_barrier_attr);
 
 	pthread_barrier_init(&third_barrier, &third_barrier_attr, n_threads);
-	push_queue_t* push_queue = init_queue(g->n);
+	// instruction_queue_t* iq = init_queue(n_threads); //TODO, size of queue?
+	instruction_queue_t** iqs = malloc(n_threads * sizeof(instruction_queue_t*));
+	for (int i = 0; i<n_threads; i++){
+		iqs[i] = init_queue(10); //What is appropirate size;
+	}
 
 	// Start all threads
 	for(int i = 0; i < n_threads; i++){
@@ -969,9 +993,9 @@ int preflow(graph_t* g, int n_threads)
 		thread_args[i].third_barrier = &third_barrier;
 		thread_args[i].n_alive_threads = &n_alive_threads;
 		thread_args[i].n_alive_threads_lock = &n_alive_threads_lock;
-		thread_args[i].excess_queue = excess_queue;
+		thread_args[i].excess_queues = excess_queues;
 		thread_args[i].n_threads = n_threads;
-		thread_args[i].push_queue = push_queue;
+		thread_args[i].instruction_queues = iqs;
 
         int rc = pthread_create(&threads[i], NULL, push_or_relabel, &thread_args[i]);
 		if (rc) {
@@ -992,10 +1016,11 @@ int preflow(graph_t* g, int n_threads)
 	pthread_barrier_destroy(&first_barrier);
 	pthread_barrier_destroy(&second_barrier);
 	pthread_barrier_destroy(&third_barrier);
-	free_queue(push_queue);
-	for (int k=0; k<n_threads; k++){
-		pthread_mutex_destroy(excess_queue[k]->lock);
+	for (int i = 0; i<n_threads; i++){
+		free_queue(iqs[i]);
 	}
+	free(iqs);
+
 	//return the answer 
 	return g->t->e;
 }

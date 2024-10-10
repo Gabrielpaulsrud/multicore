@@ -1,0 +1,58 @@
+Lab4
+Makes no difference..
+
+since load-link/store-conditional never fails
+
+"""
+.L45:
+        lwarx 10,0,9
+        add 10,10,8
+        stwcx. 10,0,9
+        bne- 0,.L45
+"""
+
+
+andi. 9,9,0x1234
+        extsw 10,9
+        ld 9,.LC8@toc@l(8)
+        stw 10,0(9)
+        .loc 1 415 7
+        li 9,1
+        stw 9,48(31)
+        ld 9,32(31)
+        lwa 10,48(31)
+        rldicl 8,10,0,32
+        sync
+.L45:
+        lwarx 10,0,9
+        add 10,10,8
+        stwcx. 10,0,9
+        bne- 0,.L45
+        isync
+        rldicl 9,10,0,32
+        extsw 9,9
+        stw 9,52(31)
+        .loc 1 416 8
+        addis 8,2,.LC8@toc@ha
+        ld 9,.LC8@toc@l(8)
+        lwz 9,0(9)
+        extsw 9,9
+        andi. 9,9,0x5678
+
+---without---
+andi. 9,9,0x1234
+        extsw 10,9
+        ld 9,.LC8@toc@l(8)
+        stw 10,0(9)
+        .loc 1 415 7
+        ld 9,32(31)
+        lwa 9,0(9)
+        addi 9,9,1
+        extsw 10,9
+        ld 9,32(31)
+        stw 10,0(9)
+        .loc 1 416 8
+        ld 9,.LC8@toc@l(8)
+        lwz 9,0(9)
+        extsw 9,9
+        andi. 9,9,0x5678

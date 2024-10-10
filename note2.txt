@@ -1,0 +1,51 @@
+----Current implementation----
+preflow:
+
+push from start node to neighbours
+
+create n number threads
+
+for thread in threads:
+    pthread.start(push_or_relabel)
+
+for thread in thread:
+    join thread
+
+// each thread itterates over their own node.
+// Hand out nodes in main thread
+push_or_relabel:
+    while (alive_threads){
+        u=get_excess()
+        decide_if_push_or_not(){
+            if should_push:
+                add to push_queue
+                node.accumulated_push+=what_to_push;
+        }
+        wait_barrier_1
+        if index==0:
+            for node in push_queue:
+                execute_push.
+        wait_barrier_2
+        if not should_push:
+            relabel()
+        wait_barrier_3
+    }
+
+----Idea of other implementation----
+push from start node to neighbours
+
+create n number threads
+
+For thread in n_threads;
+    start thread
+        decide if push or not.
+        if should_push:
+            add to push_queue
+        barrier_1 wait
+        if should not push:
+            relabel.
+        barrier_2 wait.
+for node in exc:
+    join thread:
+for node in  push_thread:
+    push.
