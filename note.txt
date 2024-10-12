@@ -10,3 +10,4 @@ lldb
 gcc -g -o preflow preflow.c pthread_barrier.c -pthread
 lldb ./preflow
 process launch --stdin ../data/railwayplanning/secret/0mini.in
+process launch --stdin ../data/tiny/0.in
