@@ -503,20 +503,19 @@ static void add_push_instruction(graph_t* g, node_t* u, node_t* v, edge_t* e, in
 	
 	if (u == e->u) {
 		// Min of u.excess and (edge capacity - edge flow)
-		d = MIN(u->e, e->c - e->f);
+		d = MIN(u->e+u->accumulated_push, e->c - e->f);
 		e->f+=d;
 	} else {
 		// Min of u.excess and (edge capacity + edge flow)
 		// Since flow is in other direction
-		d = MIN(u->e, e->c + e->f);
+		d = MIN(u->e+u->accumulated_push, e->c + e->f);
 		e->f-=d;
 	}
 
 	pr("pushing %d\n", d);
 
 	// u->accumulated_push -= d;	//MEMORD
-	// atomic_fetch_sub_explicit(&u->accumulated_push, d, memory_order_relaxed);
-	u->e -= d;
+	atomic_fetch_sub_explicit(&u->accumulated_push, d, memory_order_relaxed);
 
 	// v->accumulated_push += d; //MEMORD
 	atomic_fetch_add_explicit(&v->accumulated_push, d, memory_order_relaxed);
