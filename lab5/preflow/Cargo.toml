@@ -3,6 +3,9 @@
 name = "preflow"
 version = "0.0.1"
 authors = [ "Forsete" ]
+edition = "2018"
 
 [dependencies]
 text_io = "0.1.8"
+log = "0.4"
+env_logger = "0.10"
