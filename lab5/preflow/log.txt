@@ -1,2 +1,121 @@
-2
-f = 0
+[2024-10-14T18:24:29Z DEBUG preflow] n = 40
+[2024-10-14T18:24:29Z DEBUG preflow] m = 500
+[2024-10-14T18:24:29Z DEBUG preflow] initial pushes
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 43. 0 -> 20
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 76. 0 -> 33
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 80. 0 -> 39
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 66. 0 -> 11
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 54. 0 -> 14
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 85. 0 -> 31
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 61. 0 -> 36
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 89. 0 -> 2
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 35. 0 -> 10
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 12. 0 -> 26
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 75. 0 -> 21
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 89. 0 -> 23
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 26. 0 -> 5
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 70. 0 -> 17
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 76. 0 -> 16
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 33. 0 -> 1
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 100. 0 -> 37
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 15. 0 -> 4
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 18. 0 -> 29
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 18. 0 -> 28
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 52. 0 -> 25
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 41. 0 -> 19
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 83. 0 -> 30
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 46. 0 -> 3
+[2024-10-14T18:24:29Z DEBUG preflow] pushed 46. 0 -> 6
+[2024-10-14T18:24:29Z DEBUG preflow] [0], Excess: 0, Height: 40
+[2024-10-14T18:24:29Z DEBUG preflow] [1], Excess: 33, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [2], Excess: 89, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [3], Excess: 46, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [4], Excess: 15, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [5], Excess: 26, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [6], Excess: 46, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [7], Excess: 0, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [8], Excess: 0, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [9], Excess: 0, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [10], Excess: 35, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [11], Excess: 66, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [12], Excess: 0, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [13], Excess: 0, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [14], Excess: 54, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [15], Excess: 0, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [16], Excess: 76, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [17], Excess: 70, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [18], Excess: 0, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [19], Excess: 41, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [20], Excess: 43, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [21], Excess: 75, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [22], Excess: 0, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [23], Excess: 89, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [24], Excess: 0, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [25], Excess: 52, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [26], Excess: 12, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [27], Excess: 0, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [28], Excess: 18, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [29], Excess: 18, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [30], Excess: 83, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [31], Excess: 85, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [32], Excess: 0, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [33], Excess: 76, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [34], Excess: 0, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [35], Excess: 0, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [36], Excess: 61, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [37], Excess: 100, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [38], Excess: 0, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] [39], Excess: 80, Height: 0
+[2024-10-14T18:24:29Z DEBUG preflow] rest of pushes
+[2024-10-14T18:24:29Z DEBUG preflow] [0] Start of loop
+[2024-10-14T18:24:29Z DEBUG preflow] [0] Wait for edge-index 2
+[2024-10-14T18:24:29Z DEBUG preflow] [0] 0 -> 20. Edge-index 2
+[2024-10-14T18:24:29Z DEBUG preflow] [0] Wait for u 0
+[2024-10-14T18:24:29Z DEBUG preflow] [0] Wait for v 20
+[2024-10-14T18:24:29Z DEBUG preflow] [0] Wait for u 20
+[2024-10-14T18:24:29Z DEBUG preflow] [1] Start of loop
+[2024-10-14T18:24:29Z DEBUG preflow] [1] Wait for edge-index 4
+[2024-10-14T18:24:29Z DEBUG preflow] [1] 0 -> 33. Edge-index 4
+[2024-10-14T18:24:29Z DEBUG preflow] [1] Wait for u 0
+[2024-10-14T18:24:29Z DEBUG preflow] [2] Start of loop
+[2024-10-14T18:24:29Z DEBUG preflow] [2] Wait for edge-index 3
+[2024-10-14T18:24:29Z DEBUG preflow] [2] 11 -> 21. Edge-index 3
+[2024-10-14T18:24:29Z DEBUG preflow] [2] Wait for u 11
+[2024-10-14T18:24:29Z DEBUG preflow] [2] Wait for v 21
+[2024-10-14T18:24:29Z DEBUG preflow] [2] Wait for u 11
+[2024-10-14T18:24:29Z DEBUG preflow] [3] Start of loop
+[2024-10-14T18:24:29Z DEBUG preflow] [3] Wait for edge-index 0
+[2024-10-14T18:24:29Z DEBUG preflow] [3] 14 -> 25. Edge-index 0
+[2024-10-14T18:24:29Z DEBUG preflow] [3] Wait for u 14
+[2024-10-14T18:24:29Z DEBUG preflow] [3] Wait for v 25
+[2024-10-14T18:24:29Z DEBUG preflow] [3] Wait for u 14
+[2024-10-14T18:24:29Z DEBUG preflow] [4] Start of loop
+[2024-10-14T18:24:29Z DEBUG preflow] [4] Wait for edge-index 14
+[2024-10-14T18:24:29Z DEBUG preflow] [4] 6 -> 31. Edge-index 14
+[2024-10-14T18:24:29Z DEBUG preflow] [4] Wait for u 6
+[2024-10-14T18:24:29Z DEBUG preflow] [4] Wait for v 31
+[2024-10-14T18:24:29Z DEBUG preflow] [4] Wait for u 31
+[2024-10-14T18:24:29Z DEBUG preflow] [5] Start of loop
+[2024-10-14T18:24:29Z DEBUG preflow] [5] Wait for edge-index 7
+[2024-10-14T18:24:29Z DEBUG preflow] [5] 16 -> 36. Edge-index 7
+[2024-10-14T18:24:29Z DEBUG preflow] [5] Wait for u 16
+[2024-10-14T18:24:29Z DEBUG preflow] [5] Wait for v 36
+[2024-10-14T18:24:29Z DEBUG preflow] [5] Wait for u 36
+[2024-10-14T18:24:29Z DEBUG preflow] [6] Start of loop
+[2024-10-14T18:24:29Z DEBUG preflow] [6] Wait for edge-index 1
+[2024-10-14T18:24:29Z DEBUG preflow] [6] 2 -> 35. Edge-index 1
+[2024-10-14T18:24:29Z DEBUG preflow] [6] Wait for u 2
+[2024-10-14T18:24:29Z DEBUG preflow] [6] Wait for v 35
+[2024-10-14T18:24:29Z DEBUG preflow] [6] Wait for u 2
+[2024-10-14T18:24:29Z DEBUG preflow] [7] Start of loop
+[2024-10-14T18:24:29Z DEBUG preflow] [7] Wait for edge-index 22
+[2024-10-14T18:24:29Z DEBUG preflow] [7] 10 -> 20. Edge-index 22
+[2024-10-14T18:24:29Z DEBUG preflow] [7] Wait for u 10
+[2024-10-14T18:24:29Z DEBUG preflow] [7] Wait for v 20
+[2024-10-14T18:24:29Z DEBUG preflow] [8] Start of loop
+[2024-10-14T18:24:29Z DEBUG preflow] [8] Wait for edge-index 16
+[2024-10-14T18:24:29Z DEBUG preflow] [8] 26 -> 31. Edge-index 16
+[2024-10-14T18:24:29Z DEBUG preflow] [8] Wait for u 26
+[2024-10-14T18:24:29Z DEBUG preflow] [8] Wait for v 31
+[2024-10-14T18:24:29Z DEBUG preflow] [9] Start of loop
+[2024-10-14T18:24:29Z DEBUG preflow] [9] Wait for edge-index 3

@@ -7,17 +7,20 @@ use std::collections::VecDeque;
 use std::thread;
 use log::{info, debug};
 
+
 enum LogLevel {
     Debug,
     Info,
 }
 
+#[derive(Copy, Clone)]
 struct Node {
 	i:	usize,			/* index of itself for debugging.	*/
 	e:	i32,			/* excess preflow.			*/
 	h:	i32,			/* height.				*/
 }
 
+#[derive(Copy, Clone)]
 struct Edge {
         u_i:      usize,  
         v_i:      usize,
@@ -29,7 +32,6 @@ impl Node {
 	fn new(ii:usize) -> Node {
 		Node { i: ii, e: 0, h: 0 }
 	}
-
 }
 
 impl Edge {
@@ -41,13 +43,12 @@ impl Edge {
 fn print_nodes(nodes: &Vec<Arc<Mutex<Node>>>, log_level: LogLevel) {
     for node in nodes.iter() {
         // Lock the node to get read access to its data
-        let node = node.lock().unwrap(); // Assuming unwrap() for simplicity; consider handling errors.
+        let node = node.lock().unwrap();
         
 		match log_level {
 			LogLevel::Debug => {debug!("[{}], Excess: {}, Height: {}", node.i, node.e, node.h);}
 			LogLevel::Info => {info!("[{}], Excess: {}, Height: {}", node.i, node.e, node.h);}
 		}
-        // Print the index, excess preflow, and height
     }
 }
 
@@ -78,20 +79,21 @@ fn print_adj(adj: &Vec<LinkedList<usize>>, log_level: LogLevel) {
 	}
 }
 
-fn relabel(nodes: &Vec<Arc<Mutex<Node>>>, u_i: usize, excess:& Arc<Mutex<VecDeque<usize>>>){
+fn relabel(nodes: &Vec<Arc<Mutex<Node>>>, u_i: usize, excess:& Arc<Mutex<VecDeque<usize>>>, i: usize){
 	let mut u = nodes[u_i].lock().unwrap();
-	// assert!(u.h != 5);
 	u.h +=1;
+	debug!("[{}] wait excess relabel", i);
 	let mut excess = excess.lock().unwrap();
 	excess.push_back(u_i);
-	debug!("Relabel: {} to {}", u_i, u.h);
+	debug!("[{}] Relabel: {} to {}", i, u_i, u.h);
 }
 
-fn push(u_i: usize, v_i: usize, nodes: &Vec<Arc<Mutex<Node>>>, excess:& Arc<Mutex<VecDeque<usize>>>, edge: & Arc<Mutex<Edge>>, s_i: &usize, t_i: &usize){
-	debug!("Should push {} -> {}", u_i, v_i);
+fn push(u_i: usize, v_i: usize, nodes: &Vec<Arc<Mutex<Node>>>, excess:& Arc<Mutex<VecDeque<usize>>>, edge: & Arc<Mutex<Edge>>, s_i: &usize, t_i: &usize, i: usize){
+	debug!("[{}] Should push {} -> {}", i, u_i, v_i);
+	let mut edge = edge.lock().unwrap();
 	let mut u = nodes[u_i].lock().unwrap();
 	let mut v = nodes[v_i].lock().unwrap();
-	let mut edge = edge.lock().unwrap();
+	
 	let d: i32;
 	if u_i == edge.u_i {
 		d = cmp::min(u.e, edge.c - edge.f);
@@ -114,80 +116,78 @@ fn push(u_i: usize, v_i: usize, nodes: &Vec<Arc<Mutex<Node>>>, excess:& Arc<Mute
 	}
 }
 
-// fn excess_empty(excess:& Arc<Mutex<VecDeque<usize>>>) -> bool{
-// 	let excess = excess.lock().unwrap();
-// 	return excess.is_empty();
-// }
-
 fn get_next_excess(excess: &Arc<Mutex<VecDeque<usize>>>) -> Option<usize> {
     let mut excess = excess.lock().unwrap();
     excess.pop_front()
 }
 
-fn push_or_relabel(nodes: &Vec<Arc<Mutex<Node>>>, edges: &Vec<Arc<Mutex<Edge>>>,excess:& Arc<Mutex<VecDeque<usize>>>, adj: &Vec<LinkedList<usize>>, s_i: &usize, t_i: &usize){
-	// while !excess_empty(excess) {
+fn push_or_relabel(nodes: &Vec<Arc<Mutex<Node>>>, edges: &Vec<Arc<Mutex<Edge>>>,excess:& Arc<Mutex<VecDeque<usize>>>, adj: &Vec<LinkedList<usize>>, s_i: &usize, t_i: &usize, i: usize){
 	while let Some(u_i) = get_next_excess(&excess){
-		debug!("Start of loop");
-		print_nodes(&nodes, LogLevel::Debug);
-		// let u_i = excess.pop_front().unwrap();
+		debug!("[{}] Start of loop", i);
 		let edge_indexes = adj[u_i].iter();
 		let mut v_found: bool = false;
 		let mut v_i: usize = 0;
 		let mut b: i32;
 		let mut last_edge_index: usize = 0;
 		for edge_index in edge_indexes{
-			let edge = edges[*edge_index].lock().unwrap();
-			debug!("{} -> {}", edge.u_i, edge.v_i);
+			debug!("[{}] Wait for edge-index {}", i, *edge_index);
+			let edge_copy: Edge;
+			{
+				let edge: std::sync::MutexGuard<'_, Edge> = edges[*edge_index].lock().unwrap();
+				edge_copy = *edge;
+
+				// let edge_address = &*edge as *const Edge;
+				// let edge_copy_address = &edge_copy as *const Edge;
 			
-			if u_i==edge.u_i {
-				v_i = edge.v_i;
+				// assert_ne!(edge_address, edge_copy_address, "edge and edge_copy point to the same address!");
+				// assert!(false);
+			}
+			debug!("[{}] {} -> {}. Edge-index {}", i,  edge_copy.u_i, edge_copy.v_i, *edge_index);
+			
+			// let u: std::sync::MutexGuard<'_, Node>;
+			// let v: std::sync::MutexGuard<'_, Node>;
+			
+			let edge_u_copy: Node;
+			{
+				debug!("[{}] Wait for u {}", i, edge_copy.u_i);
+				let edge_u = nodes[edge_copy.u_i].lock().unwrap();
+				edge_u_copy = *edge_u;
+			}
+			let edge_v_copy: Node;
+			{
+				debug!("[{}] Wait for v {}", i, edge_copy.v_i);
+				let edge_v: std::sync::MutexGuard<'_, Node> = nodes[edge_copy.v_i].lock().unwrap();
+				edge_v_copy = *edge_v;
+			}
+			let v: Node;
+			let u: Node;
+			if u_i==edge_copy.u_i {
+				v_i = edge_copy.v_i;
 				b = 1;
+				u = edge_u_copy;
+				v = edge_v_copy;
+
 			}
 			else {
-				v_i = edge.u_i;
+				v_i = edge_copy.u_i;
 				b = -1;
+				u = edge_v_copy;
+				v = edge_u_copy;
 			}
-			let u = nodes[u_i].lock().unwrap();
-			let v: std::sync::MutexGuard<'_, Node> = nodes[v_i].lock().unwrap();
-			if u.h > v.h && b*edge.f < edge.c{
+			
+			if u.h > v.h && b*edge_copy.f < edge_copy.c{
 				v_found = true;
 				last_edge_index = *edge_index;
 				break;
 			}
 		}
 		if v_found{
-			// debug!("Should push {} -> {}", u_i, v_i);
-			// let mut u = nodes[u_i].lock().unwrap();
-			// let mut v = nodes[v_i].lock().unwrap();
-			// let mut edge = edges[last_edge_index].lock().unwrap();
-			// let d: i32;
-			// if u_i == edge.u_i {
-			// 	d = cmp::min(u.e, edge.c - edge.f);
-			// 	edge.f += d;
-			// } else {
-			// 	d = cmp::min(u.e, edge.c + edge.f);
-			// 	edge.f -= d;
-			// }
-			// u.e -= d;
-			// v.e += d;
-			// if u.e > 0 && u_i!= s_i && u_i != t_i{
-			// 	debug!("R1 Adding {} to excess", u_i);
-			// 	excess.push_back(u_i);
-			// }
-			// if v.e == d && v_i!= s_i && v_i != t_i{
-			// 	debug!("R2 Adding {} to excess", v_i);
-			// 	excess.push_back(v_i);
-			// }
+			debug!("[{}] Edge-index {}", i, last_edge_index);
 			let edge = &edges[last_edge_index];
-			push(u_i, v_i, &nodes, excess, &edge, &s_i, &t_i);
+			push(u_i, v_i, &nodes, excess, &edge, &s_i, &t_i, i);
 		}
 		else {
-			// let mut u = nodes[u].lock().unwrap();
-			// assert!(u.h != 5);
-			// u.h +=1;
-			// excess.push_back(u);
-			// debug!("Relabel: {} to {}", u, u.h);	
-			relabel(&nodes, u_i, excess);
+			relabel(&nodes, u_i, excess, i);
 		}
 	}
 }
@@ -201,7 +201,6 @@ fn main() {
 	let mut nodes: Vec<Arc<Mutex<Node>>> = vec![];
 	let mut edges: Vec<Arc<Mutex<Edge>>> = vec![];
 	let mut adj: Vec<LinkedList<usize>> =Vec::with_capacity(n);
-	// let mut excess: VecDeque<usize> = VecDeque::new();
 	let excess: Arc<Mutex<VecDeque<_>>> = Arc::new(Mutex::new(VecDeque::new()));
 
 	let s_i = 0;
@@ -231,9 +230,7 @@ fn main() {
 		start_node.h = n as i32;
 	}
 	
-	print_nodes(&nodes, LogLevel::Debug);
-	print_edges(&edges, LogLevel::Debug);
-	print_adj(&adj, LogLevel::Debug);
+	
 	debug!("initial pushes");
 	let iter = adj[s_i].iter();
 	for edj in iter{
@@ -259,10 +256,7 @@ fn main() {
 		}
 	}
 	let iter_2 = adj[s_i].iter();
-	// {
-	// 	let excess = excess.lock().unwrap();
-	// 	assert!(excess.len()==iter_2.len());
-	// }
+
 	for edj in iter_2{
 		let edge = edges[*edj].lock().unwrap();
 		if edge.u_i == s_i {
@@ -275,24 +269,23 @@ fn main() {
 		}
 		assert!(edge.c == edge.f);
 	}
+	print_nodes(&nodes, LogLevel::Debug);
+	print_edges(&edges, LogLevel::Debug);
+	print_adj(&adj, LogLevel::Debug);
 
 	debug!("rest of pushes");
 
-	// nodes_clone = Arc::clone(nodes);
-	// let nodes_clone = Arc::clone(&nodes);
-    // let edges_clone = Arc::clone(&edges);
-    // let adj_clone = Arc::clone(&adj);
-	// let mut handles = vec![];
+
 	let mut handles: Vec<thread::JoinHandle<()>> = vec![];
 	let n_threads: usize = 10;
 
-	for _ in 0..n_threads {
+	for i in 0..n_threads {
 		let nodes_clone = nodes.clone();
 		let edges_clone = edges.clone();
 		let adj_clone = adj.clone();
 		let excess_clone = Arc::clone(&excess);
 		let handle  = thread::spawn(move || {
-			push_or_relabel(&nodes_clone, &edges_clone, &excess_clone, &adj_clone, &s_i, &t_i);
+			push_or_relabel(&nodes_clone, &edges_clone, &excess_clone, &adj_clone, &s_i, &t_i, i);
 		});
 		handles.push(handle);
 	}
@@ -300,77 +293,12 @@ fn main() {
 	for handle in handles {
         handle.join().unwrap(); // Wait for all threads to finish
     }
-	// h.join().unwrap();
-	// push_or_relabel(&nodes, &edges, &excess, &adj, s_i, t_i)
-	// while !excess.is_empty() {
-	// 	debug!("Start of loop");
-	// 	print_nodes(&nodes, LogLevel::Debug);
-	// 	let u_i = excess.pop_front().unwrap();
-	// 	let edge_indexes = adj[u_i].iter();
-	// 	let mut v_found: bool = false;
-	// 	let mut v_i: usize = 0;
-	// 	let mut b: i32;
-	// 	let mut last_edge_index: usize = 0;
-	// 	for edge_index in edge_indexes{
-	// 		let edge = edges[*edge_index].lock().unwrap();
-	// 		debug!("{} -> {}", edge.u_i, edge.v_i);
-			
-	// 		if u_i==edge.u_i {
-	// 			v_i = edge.v_i;
-	// 			b = 1;
-	// 		}
-	// 		else {
-	// 			v_i = edge.u_i;
-	// 			b = -1;
-	// 		}
-	// 		let u = nodes[u_i].lock().unwrap();
-	// 		let v: std::sync::MutexGuard<'_, Node> = nodes[v_i].lock().unwrap();
-	// 		if u.h > v.h && b*edge.f < edge.c{
-	// 			v_found = true;
-	// 			last_edge_index = *edge_index;
-	// 			break;
-	// 		}
-	// 	}
-	// 	if v_found{
-	// 		// debug!("Should push {} -> {}", u_i, v_i);
-	// 		// let mut u = nodes[u_i].lock().unwrap();
-	// 		// let mut v = nodes[v_i].lock().unwrap();
-	// 		// let mut edge = edges[last_edge_index].lock().unwrap();
-	// 		// let d: i32;
-	// 		// if u_i == edge.u_i {
-	// 		// 	d = cmp::min(u.e, edge.c - edge.f);
-	// 		// 	edge.f += d;
-	// 		// } else {
-	// 		// 	d = cmp::min(u.e, edge.c + edge.f);
-	// 		// 	edge.f -= d;
-	// 		// }
-	// 		// u.e -= d;
-	// 		// v.e += d;
-	// 		// if u.e > 0 && u_i!= s_i && u_i != t_i{
-	// 		// 	debug!("R1 Adding {} to excess", u_i);
-	// 		// 	excess.push_back(u_i);
-	// 		// }
-	// 		// if v.e == d && v_i!= s_i && v_i != t_i{
-	// 		// 	debug!("R2 Adding {} to excess", v_i);
-	// 		// 	excess.push_back(v_i);
-	// 		// }
-	// 		let edge = &edges[last_edge_index];
-	// 		push(u_i, v_i, &nodes, &mut excess, &edge, s_i, t_i);
-	// 	}
-	// 	else {
-	// 		// let mut u = nodes[u].lock().unwrap();
-	// 		// assert!(u.h != 5);
-	// 		// u.h +=1;
-	// 		// excess.push_back(u);
-	// 		// debug!("Relabel: {} to {}", u, u.h);	
-	// 		relabel(&nodes, u_i, &mut excess);
-	// 	}
-	// }
+
 
 	println!("{}", t_i);
 	print_nodes(&nodes, LogLevel::Info);
-	// print_edges(&edges, LogLevel::Info);
-	// print_adj(&adj, LogLevel::Info);
+	print_edges(&edges, LogLevel::Info);
+	print_adj(&adj, LogLevel::Info);
 
 	let sink_node = nodes[t_i].lock().unwrap();
 	println!("f = {}", sink_node.e);
